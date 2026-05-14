@@ -1,6 +1,6 @@
 """Myelin V2 SQLite schema. Grounded in ACT-R, SOAR, and Generative Agents."""
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 SCHEMA_SQL = """
 PRAGMA journal_mode=WAL;
@@ -267,6 +267,125 @@ CREATE TABLE IF NOT EXISTS process_runs (
 
 CREATE INDEX IF NOT EXISTS idx_process_runs_name ON process_runs(process_name);
 CREATE INDEX IF NOT EXISTS idx_process_runs_status ON process_runs(status);
+
+-- ============================================================
+-- KNOWLEDGE GRAPH
+-- Entity extraction, typed relationships, temporal index.
+-- Stolen from: mem0 (entity linking), Supermemory (ontology-aware graph).
+-- Made better: entities feed procedure discovery, relationships are
+-- learned from behavior not just similarity, temporal reasoning
+-- resolves "current state" vs "historical" queries.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS entities (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    entity_type TEXT NOT NULL,           -- 'tool', 'service', 'concept', 'file', 'person', 'config', 'error'
+    canonical_name TEXT NOT NULL,        -- Deduplicated canonical form
+    description TEXT,
+    embedding BLOB,
+
+    -- Frequency and activation
+    mention_count INTEGER NOT NULL DEFAULT 1,
+    access_times TEXT NOT NULL DEFAULT '[]',
+    first_seen TEXT NOT NULL DEFAULT (datetime('now')),
+    last_seen TEXT NOT NULL DEFAULT (datetime('now')),
+
+    -- Provenance
+    domain TEXT,
+    source_episodes TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_entities_canonical ON entities(canonical_name, entity_type);
+CREATE INDEX IF NOT EXISTS idx_entities_type ON entities(entity_type);
+CREATE INDEX IF NOT EXISTS idx_entities_domain ON entities(domain);
+CREATE INDEX IF NOT EXISTS idx_entities_mention_count ON entities(mention_count DESC);
+
+-- Links entities to the episodes/nodes where they appear
+CREATE TABLE IF NOT EXISTS entity_mentions (
+    id TEXT PRIMARY KEY,
+    entity_id TEXT NOT NULL,
+    source_type TEXT NOT NULL,           -- 'episode', 'semantic_node', 'procedure'
+    source_id TEXT NOT NULL,
+    context_snippet TEXT,                -- Surrounding text where entity was found
+    role TEXT DEFAULT 'subject',         -- 'subject', 'object', 'tool', 'target'
+    timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (entity_id) REFERENCES entities(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_entity_mentions_entity ON entity_mentions(entity_id);
+CREATE INDEX IF NOT EXISTS idx_entity_mentions_source ON entity_mentions(source_type, source_id);
+
+-- Typed edges between entities (the knowledge graph)
+CREATE TABLE IF NOT EXISTS relationships (
+    id TEXT PRIMARY KEY,
+    source_entity_id TEXT NOT NULL,
+    target_entity_id TEXT NOT NULL,
+    relation_type TEXT NOT NULL,         -- 'uses', 'requires', 'produces', 'causes', 'contradicts', 'supersedes', 'related_to', 'part_of', 'triggers'
+    strength REAL NOT NULL DEFAULT 1.0,  -- Co-occurrence / confidence weight
+    evidence_count INTEGER NOT NULL DEFAULT 1,
+    evidence_episodes TEXT NOT NULL DEFAULT '[]',
+
+    domain TEXT,
+    first_observed TEXT NOT NULL DEFAULT (datetime('now')),
+    last_observed TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (source_entity_id) REFERENCES entities(id) ON DELETE CASCADE,
+    FOREIGN KEY (target_entity_id) REFERENCES entities(id) ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_relationships_pair ON relationships(source_entity_id, target_entity_id, relation_type);
+CREATE INDEX IF NOT EXISTS idx_relationships_source ON relationships(source_entity_id);
+CREATE INDEX IF NOT EXISTS idx_relationships_target ON relationships(target_entity_id);
+CREATE INDEX IF NOT EXISTS idx_relationships_type ON relationships(relation_type);
+CREATE INDEX IF NOT EXISTS idx_relationships_strength ON relationships(strength DESC);
+
+-- Temporal index: tracks state changes over time for entities/facts
+CREATE TABLE IF NOT EXISTS temporal_states (
+    id TEXT PRIMARY KEY,
+    entity_id TEXT,                      -- NULL for general facts
+    semantic_node_id TEXT,               -- The semantic node this state comes from
+    state_description TEXT NOT NULL,     -- What was true at this time
+    valid_from TEXT NOT NULL,
+    valid_until TEXT,                    -- NULL = currently valid
+    confidence REAL NOT NULL DEFAULT 0.5,
+    source_episode_id TEXT,
+    domain TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (entity_id) REFERENCES entities(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_temporal_entity ON temporal_states(entity_id);
+CREATE INDEX IF NOT EXISTS idx_temporal_valid ON temporal_states(valid_from, valid_until);
+CREATE INDEX IF NOT EXISTS idx_temporal_current ON temporal_states(valid_until) WHERE valid_until IS NULL;
+CREATE INDEX IF NOT EXISTS idx_temporal_domain ON temporal_states(domain);
+
+-- FTS for entities
+CREATE VIRTUAL TABLE IF NOT EXISTS entities_fts USING fts5(
+    name,
+    canonical_name,
+    description,
+    entity_type,
+    content='entities',
+    content_rowid='rowid'
+);
+
+CREATE TRIGGER IF NOT EXISTS entities_ai AFTER INSERT ON entities BEGIN
+    INSERT INTO entities_fts(rowid, name, canonical_name, description, entity_type)
+    VALUES (new.rowid, new.name, new.canonical_name, new.description, new.entity_type);
+END;
+
+CREATE TRIGGER IF NOT EXISTS entities_ad AFTER DELETE ON entities BEGIN
+    INSERT INTO entities_fts(entities_fts, rowid, name, canonical_name, description, entity_type)
+    VALUES ('delete', old.rowid, old.name, old.canonical_name, old.description, old.entity_type);
+END;
+
+CREATE TRIGGER IF NOT EXISTS entities_au AFTER UPDATE ON entities BEGIN
+    INSERT INTO entities_fts(entities_fts, rowid, name, canonical_name, description, entity_type)
+    VALUES ('delete', old.rowid, old.name, old.canonical_name, old.description, old.entity_type);
+    INSERT INTO entities_fts(rowid, name, canonical_name, description, entity_type)
+    VALUES (new.rowid, new.name, new.canonical_name, new.description, new.entity_type);
+END;
 
 -- ============================================================
 -- FULL-TEXT SEARCH (FTS5)

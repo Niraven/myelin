@@ -80,6 +80,31 @@ class ProcessName(str, Enum):
     COMPOSER = "composer"
     DECAYER = "decayer"
     CHALLENGER = "challenger"
+    SLEEP = "sleep"
+
+
+class EntityType(str, Enum):
+    TOOL = "tool"
+    SERVICE = "service"
+    CONCEPT = "concept"
+    FILE = "file"
+    PERSON = "person"
+    CONFIG = "config"
+    ERROR = "error"
+    COMMAND = "command"
+    PATTERN = "pattern"
+
+
+class RelationType(str, Enum):
+    USES = "uses"
+    REQUIRES = "requires"
+    PRODUCES = "produces"
+    CAUSES = "causes"
+    CONTRADICTS = "contradicts"
+    SUPERSEDES = "supersedes"
+    RELATED_TO = "related_to"
+    PART_OF = "part_of"
+    TRIGGERS = "triggers"
 
 
 # ── Episodic Memory ────────────────────────────────────────────
@@ -229,6 +254,58 @@ class AgentProfile(BaseModel):
     capabilities: dict[str, Any] = Field(default_factory=dict)
     first_seen: str = Field(default_factory=_now_iso)
     last_seen: str = Field(default_factory=_now_iso)
+
+
+class Entity(BaseModel):
+    id: str = Field(default_factory=_new_id)
+    name: str
+    entity_type: EntityType
+    canonical_name: str
+    description: str | None = None
+    embedding: list[float] | None = None
+    mention_count: int = 1
+    access_times: list[float] = Field(default_factory=lambda: [time.time()])
+    first_seen: str = Field(default_factory=_now_iso)
+    last_seen: str = Field(default_factory=_now_iso)
+    domain: str | None = None
+    source_episodes: list[str] = Field(default_factory=list)
+    created_at: str = Field(default_factory=_now_iso)
+
+
+class EntityMention(BaseModel):
+    id: str = Field(default_factory=_new_id)
+    entity_id: str
+    source_type: str
+    source_id: str
+    context_snippet: str | None = None
+    role: str = "subject"
+    timestamp: str = Field(default_factory=_now_iso)
+
+
+class Relationship(BaseModel):
+    id: str = Field(default_factory=_new_id)
+    source_entity_id: str
+    target_entity_id: str
+    relation_type: RelationType
+    strength: float = 1.0
+    evidence_count: int = 1
+    evidence_episodes: list[str] = Field(default_factory=list)
+    domain: str | None = None
+    first_observed: str = Field(default_factory=_now_iso)
+    last_observed: str = Field(default_factory=_now_iso)
+
+
+class TemporalState(BaseModel):
+    id: str = Field(default_factory=_new_id)
+    entity_id: str | None = None
+    semantic_node_id: str | None = None
+    state_description: str
+    valid_from: str = Field(default_factory=_now_iso)
+    valid_until: str | None = None
+    confidence: float = 0.5
+    source_episode_id: str | None = None
+    domain: str | None = None
+    created_at: str = Field(default_factory=_now_iso)
 
 
 class TransferRecord(BaseModel):
