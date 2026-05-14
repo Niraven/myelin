@@ -1,11 +1,10 @@
-"""Myelin MCP server. Exposes 7 tools for agent memory."""
+"""Myelin MCP server. Exposes 16 tools for agent memory and intelligence."""
 
 from __future__ import annotations
 
 import argparse
 import asyncio
 import json
-import sys
 from pathlib import Path
 
 from mcp.server import Server
@@ -13,16 +12,23 @@ from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool
 
 from .core.database import Database
+from .intelligence.context import ContextAssembler
+from .knowledge.entities import EntityStore
+from .knowledge.graph import KnowledgeGraph
+from .knowledge.temporal import TemporalIndex
 from .memory.embedding import get_embedding_provider
 from .memory.episodic import EpisodicMemory
 from .memory.procedural import ProceduralMemory
+from .memory.retriever import MultiSignalRetriever
 from .memory.semantic import SemanticMemory
+from .metacognition.confidence import ConfidenceMap
 from .tools.handlers import ToolHandlers
+from .transfer.protocol import TransferProtocol
 
 TOOLS = [
     Tool(
         name="myelin_observe",
-        description="Record an agent action as an episodic memory. Call this for every significant action the agent takes.",
+        description="Record an agent action as an episodic memory with automatic entity extraction. Call this for every significant action.",
         inputSchema={
             "type": "object",
             "properties": {
@@ -42,17 +48,13 @@ TOOLS = [
     ),
     Tool(
         name="myelin_recall",
-        description="Search across all memory types (episodic, semantic, procedural) for relevant knowledge.",
+        description="Search across all memory types (episodic, semantic, procedural). Use myelin_context for richer results.",
         inputSchema={
             "type": "object",
             "properties": {
-                "query": {"type": "string", "description": "What to search for"},
+                "query": {"type": "string"},
                 "limit": {"type": "integer", "default": 10},
-                "memory_types": {
-                    "type": "array",
-                    "items": {"type": "string", "enum": ["episodic", "semantic", "procedural"]},
-                    "description": "Which memory types to search. Default: all.",
-                },
+                "memory_types": {"type": "array", "items": {"type": "string", "enum": ["episodic", "semantic", "procedural"]}},
                 "domain": {"type": "string"},
                 "min_confidence": {"type": "number", "default": 0.0},
             },
@@ -60,14 +62,29 @@ TOOLS = [
         },
     ),
     Tool(
+        name="myelin_context",
+        description="Assemble complete context for a situation: relevant memories, matching procedures, entity relationships, temporal state, confidence, and suggested actions. This is the primary intelligence tool.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "What you need context for"},
+                "domain": {"type": "string"},
+                "agent_id": {"type": "string"},
+                "max_memories": {"type": "integer", "default": 10},
+                "max_procedures": {"type": "integer", "default": 3},
+            },
+            "required": ["query"],
+        },
+    ),
+    Tool(
         name="myelin_execute_procedure",
-        description="Find and return the best matching learned procedure for a task. Returns step-by-step instructions.",
+        description="Find the best matching learned procedure for a task. Returns step-by-step instructions with confidence.",
         inputSchema={
             "type": "object",
             "properties": {
                 "query": {"type": "string", "description": "Description of what you want to do"},
                 "agent_id": {"type": "string"},
-                "context": {"type": "object", "description": "Current execution context"},
+                "context": {"type": "object"},
             },
             "required": ["query", "agent_id"],
         },
@@ -80,11 +97,7 @@ TOOLS = [
             "properties": {
                 "procedure_id": {"type": "string"},
                 "success": {"type": "boolean"},
-                "modifications": {
-                    "type": "array",
-                    "items": {"type": "object"},
-                    "description": "Steps that were modified during execution",
-                },
+                "modifications": {"type": "array", "items": {"type": "object"}},
                 "notes": {"type": "string"},
             },
             "required": ["procedure_id", "success"],
@@ -103,25 +116,13 @@ TOOLS = [
     ),
     Tool(
         name="myelin_teach",
-        description="Manually teach Myelin a procedure. Starts at 0.7 confidence (higher than auto-promoted).",
+        description="Manually teach a procedure. Starts at 0.7 confidence (higher than auto-promoted).",
         inputSchema={
             "type": "object",
             "properties": {
-                "name": {"type": "string", "description": "Procedure name"},
+                "name": {"type": "string"},
                 "trigger_pattern": {"type": "string", "description": "When to suggest this procedure"},
-                "steps": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "description": {"type": "string"},
-                            "type": {"type": "string", "enum": ["core", "variant", "optional"]},
-                            "variants": {"type": "array", "items": {"type": "string"}},
-                            "condition": {"type": "string"},
-                        },
-                        "required": ["description"],
-                    },
-                },
+                "steps": {"type": "array", "items": {"type": "object", "properties": {"description": {"type": "string"}, "type": {"type": "string", "enum": ["core", "variant", "optional"]}, "variants": {"type": "array", "items": {"type": "string"}}, "condition": {"type": "string"}}, "required": ["description"]}},
                 "agent_id": {"type": "string"},
                 "description": {"type": "string"},
                 "preconditions": {"type": "array", "items": {"type": "string"}},
@@ -133,12 +134,108 @@ TOOLS = [
     ),
     Tool(
         name="myelin_status",
-        description="Get overall Myelin system status: episode counts, procedures, learning goals, last process run.",
+        description="Get system status: episode counts, procedures, entities, relationships, temporal states, learning goals.",
+        inputSchema={
+            "type": "object",
+            "properties": {"agent_id": {"type": "string"}},
+        },
+    ),
+    Tool(
+        name="myelin_query",
+        description="Multi-signal retrieval fusing text search, vector similarity, entity graph, temporal recency, and ACT-R activation into a single ranked result.",
         inputSchema={
             "type": "object",
             "properties": {
-                "agent_id": {"type": "string"},
+                "query": {"type": "string"},
+                "limit": {"type": "integer", "default": 10},
+                "domain": {"type": "string"},
+                "weights": {"type": "object", "description": "Signal weights: text, vector, entity, temporal, activation (0-1 each)"},
             },
+            "required": ["query"],
+        },
+    ),
+    Tool(
+        name="myelin_graph_query",
+        description="Explore the knowledge graph around an entity. Returns neighbors, relationships, and subgraph structure.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "entity_name": {"type": "string", "description": "Entity name to search for"},
+                "entity_id": {"type": "string", "description": "Or provide entity ID directly"},
+                "direction": {"type": "string", "enum": ["in", "out", "both"], "default": "both"},
+                "relation_types": {"type": "array", "items": {"type": "string"}},
+                "max_depth": {"type": "integer", "default": 2},
+            },
+        },
+    ),
+    Tool(
+        name="myelin_temporal",
+        description="Query temporal state of entities or domains. Shows current state, history, and transitions over time.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "entity_name": {"type": "string"},
+                "entity_id": {"type": "string"},
+                "domain": {"type": "string"},
+            },
+        },
+    ),
+    Tool(
+        name="myelin_entities",
+        description="Search and browse extracted entities (tools, services, files, errors, concepts).",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "search": {"type": "string", "description": "Search term"},
+                "entity_type": {"type": "string", "enum": ["tool", "service", "concept", "file", "person", "config", "error", "command", "pattern"]},
+                "limit": {"type": "integer", "default": 20},
+            },
+        },
+    ),
+    Tool(
+        name="myelin_transfer_export",
+        description="Package a learned procedure for transfer to another agent. Adapts steps based on target agent capabilities.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "procedure_id": {"type": "string"},
+                "source_agent": {"type": "string"},
+                "target_agent": {"type": "string"},
+            },
+            "required": ["procedure_id", "source_agent", "target_agent"],
+        },
+    ),
+    Tool(
+        name="myelin_transfer_import",
+        description="Import a procedure from another agent. Creates a draft procedure with discounted confidence.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "package": {"type": "object", "description": "Transfer package from myelin_transfer_export"},
+                "agent_id": {"type": "string", "description": "Receiving agent ID"},
+            },
+            "required": ["package", "agent_id"],
+        },
+    ),
+    Tool(
+        name="myelin_transfer_discover",
+        description="Discover procedures that could be transferred between agents. Shows compatibility scores.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "source_agent": {"type": "string"},
+                "target_agent": {"type": "string"},
+                "min_confidence": {"type": "number", "default": 0.6},
+            },
+            "required": ["source_agent", "target_agent"],
+        },
+    ),
+    Tool(
+        name="myelin_sleep",
+        description="Trigger a sleep consolidation cycle: entity extraction, relationship inference, graph merging, temporal updates, cross-domain linking, and staleness detection.",
+        inputSchema={
+            "type": "object",
+            "properties": {"agent_id": {"type": "string"}},
         },
     ),
 ]
@@ -152,7 +249,28 @@ def create_server(db_path: str | None = None, embedding_provider: str = "none") 
     episodic = EpisodicMemory(db)
     semantic = SemanticMemory(db)
     procedural = ProceduralMemory(db)
-    handlers = ToolHandlers(episodic, semantic, procedural, embedder)
+
+    entity_store = EntityStore(db)
+    graph = KnowledgeGraph(db)
+    temporal = TemporalIndex(db)
+    confidence_map = ConfidenceMap(db)
+
+    retriever = MultiSignalRetriever(db, entity_store, graph, temporal)
+    assembler = ContextAssembler(
+        db, retriever, entity_store, graph, temporal, procedural, confidence_map, embedder
+    )
+    transfer = TransferProtocol(db, procedural)
+
+    handlers = ToolHandlers(
+        episodic, semantic, procedural, embedder,
+        entity_store=entity_store,
+        graph=graph,
+        temporal=temporal,
+        retriever=retriever,
+        context_assembler=assembler,
+        transfer_protocol=transfer,
+        confidence_map=confidence_map,
+    )
 
     @server.list_tools()
     async def list_tools() -> list[Tool]:
@@ -163,11 +281,20 @@ def create_server(db_path: str | None = None, embedding_provider: str = "none") 
         handler_map = {
             "myelin_observe": handlers.observe,
             "myelin_recall": handlers.recall,
+            "myelin_context": handlers.context,
             "myelin_execute_procedure": handlers.execute_procedure,
             "myelin_procedure_feedback": handlers.procedure_feedback,
             "myelin_confidence": handlers.confidence,
             "myelin_teach": handlers.teach,
             "myelin_status": handlers.status,
+            "myelin_query": handlers.query,
+            "myelin_graph_query": handlers.graph_query,
+            "myelin_temporal": handlers.temporal_query,
+            "myelin_entities": handlers.entities_query,
+            "myelin_transfer_export": handlers.transfer_export,
+            "myelin_transfer_import": handlers.transfer_import,
+            "myelin_transfer_discover": handlers.transfer_discover,
+            "myelin_sleep": handlers.trigger_sleep,
         }
 
         handler = handler_map.get(name)

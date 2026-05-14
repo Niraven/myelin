@@ -1,96 +1,196 @@
 # Myelin
 
-Cognitive memory layer for AI agents. Learns procedures from behavior, transfers knowledge across agents via MCP.
+A cognitive memory layer for AI agents. Learns procedures from behavior, builds knowledge graphs from observations, and transfers knowledge across agents via MCP.
 
-## What it does
+Named after the biological myelin sheath that accelerates neural signal transmission, Myelin accelerates AI agents by giving them persistent, structured memory that improves with use.
 
-Myelin observes how AI agents work, detects patterns, and promotes repeated behaviors into reusable procedures. One agent learns, all agents benefit.
+## Why Myelin
 
-**Core capabilities:**
-- **Procedural learning** -- automatically extracts workflows from repeated agent behavior using ACT-R activation math
-- **Procedure composition** -- chains simple procedures into complex workflows (SOAR-inspired chunking)
-- **Cross-agent transfer** -- shares learned procedures between agents with capability-aware similarity scoring
-- **Active metacognition** -- identifies knowledge gaps and creates learning goals (SOAR impasse detection)
-- **Bayesian confidence** -- asymptotic confidence tracking with calibration correction
+Most agent memory systems store and retrieve text. Myelin does more:
+
+- **Learns procedures automatically.** Watches what agents do, clusters similar action sequences, aligns them using ClustalW-inspired multiple sequence alignment, and promotes recurring patterns into reusable procedures with Bayesian confidence tracking.
+- **Builds knowledge graphs from observations.** Extracts entities (tools, services, files, errors) from every action, infers typed relationships, and maintains an evidence-weighted graph that grows with usage.
+- **Tracks temporal state.** Knows that Redis was healthy 2 hours ago but is degraded now. Maintains full state transition history for every entity.
+- **Assembles context, not just search results.** When an agent needs to act, Myelin combines relevant memories, matching procedures, entity relationships, temporal state, and domain confidence into a single structured context block.
+- **Transfers knowledge between agents.** Packages procedures with capability-aware adaptation so knowledge learned by one agent can be used by another, even with different toolsets.
 
 ## Architecture
 
-Three memory types (inspired by cognitive science):
-- **Episodic** -- raw observations of agent actions with full context
-- **Semantic** -- facts, reflections, and higher-order insights
-- **Procedural** -- learned step-by-step workflows with branching
-
-Six background cognitive processes:
-- **Consolidator** -- merges similar episodes into semantic summaries
-- **Reflector** -- generates higher-order insights (Stanford Generative Agents)
-- **Promoter** -- detects patterns and promotes to procedures (ACT-R activation)
-- **Composer** -- chains compatible procedures (SOAR chunking)
-- **Decayer** -- Ebbinghaus forgetting curve for unused memories
-- **Challenger** -- tests beliefs against contradictory evidence
-
-## Quick start
-
-```bash
-pip install myelin
+```
+                    MCP Interface (16 tools)
+                           |
+            +--------------+--------------+
+            |              |              |
+     Intelligence    Memory Layer    Knowledge Layer
+     (context        (episodic,      (entities,
+      assembly)       semantic,       graph,
+                      procedural)     temporal)
+            |              |              |
+            +--------------+--------------+
+                           |
+                  Cognitive Processes
+           (consolidation, reflection,
+            promotion, composition,
+            decay, challenge, sleep)
+                           |
+                    SQLite + FTS5
 ```
 
-### As an MCP server
+**Memory Layer** stores three types of memory, mirroring human cognitive architecture:
+- **Episodic**: raw observations of what happened (what, when, outcome)
+- **Semantic**: distilled facts and reflections (consolidated from episodes)
+- **Procedural**: learned step-by-step workflows (promoted from clusters)
+
+**Knowledge Layer** maintains structured understanding:
+- **Entity Store**: pattern-based NER extracts tools, services, files, errors from every observation. No LLM dependency.
+- **Knowledge Graph**: typed, evidence-weighted edges between entities. BFS/DFS traversal, domain subgraphs.
+- **Temporal Index**: tracks entity state over time with automatic supersession and transition history.
+
+**Cognitive Processes** run in the background, triggered by write counts, timers, or session boundaries:
+- **Consolidator**: merges recent episodes into semantic nodes (every 50 writes)
+- **Reflector**: generates higher-order insights from semantic nodes (session end)
+- **Promoter**: clusters episodes, aligns sequences, promotes to procedures (session end)
+- **Composer**: chains compatible procedures into meta-procedures (SOAR chunking)
+- **Decayer**: applies Ebbinghaus forgetting curve to stale memories (hourly)
+- **Challenger**: tests and potentially invalidates outdated beliefs (session end)
+- **Sleep**: batch consolidation cycle with 6 phases (session end)
+
+**Intelligence Layer** is the primary interface for agents:
+- **Context Assembler**: fuses all signals into a structured context block with suggested actions
+- **Multi-Signal Retriever**: ranks results using 5 fused signals (FTS + vector + entity + temporal + ACT-R activation)
+
+**Transfer Protocol** enables cross-agent knowledge sharing:
+- Agent profiling (tools, model family, context format)
+- Capability-aware step adaptation
+- Confidence discounting based on agent similarity
+
+## Quick Start
+
+### Install
+
+```bash
+pip install myelin-memory
+```
+
+### As MCP Server
+
+Add to your MCP client config:
 
 ```json
 {
   "mcpServers": {
     "myelin": {
-      "command": "myelin",
-      "args": ["--embeddings", "none"]
+      "command": "python",
+      "args": ["-m", "myelin.server"],
+      "env": {}
     }
   }
 }
 ```
 
-### With local embeddings (better search)
+### Programmatic Usage
 
-```bash
-pip install myelin[embeddings]
-myelin --embeddings local
+```python
+from myelin.core.database import Database
+from myelin.session import Session
+
+db = Database("agent_memory.db")
+session = Session(db, agent_id="my-agent")
+
+# Record observations
+await session.observe(
+    action="git pull origin main",
+    action_type="tool_call",
+    content_text="Pulled latest changes from main branch",
+    domain="deployment",
+)
+
+# End session triggers cognitive processes
+results = await session.end()
 ```
 
-## MCP tools
+### Key MCP Tools
 
-| Tool | What it does |
-|------|-------------|
-| `myelin_observe` | Record an agent action as episodic memory |
-| `myelin_recall` | Search across all memory types |
-| `myelin_execute_procedure` | Find and return matching learned procedure |
-| `myelin_procedure_feedback` | Report execution outcome (updates Bayesian confidence) |
-| `myelin_confidence` | Query confidence levels by domain or procedure |
+| Tool | Purpose |
+|------|---------|
+| `myelin_observe` | Record an action with automatic entity extraction |
+| `myelin_context` | Assemble complete context for a situation (primary tool) |
+| `myelin_query` | Multi-signal retrieval across all memory types |
+| `myelin_execute_procedure` | Find matching learned procedure for a task |
+| `myelin_procedure_feedback` | Report success/failure to update confidence |
+| `myelin_graph_query` | Explore knowledge graph relationships |
+| `myelin_temporal` | Query temporal state of entities/domains |
+| `myelin_entities` | Search extracted entities |
 | `myelin_teach` | Manually teach a procedure |
-| `myelin_status` | System status: episodes, procedures, learning goals |
+| `myelin_transfer_export` | Package procedure for another agent |
+| `myelin_transfer_import` | Import procedure from another agent |
+| `myelin_transfer_discover` | Find transferable procedures between agents |
+| `myelin_confidence` | Query domain/procedure confidence |
+| `myelin_sleep` | Trigger sleep consolidation cycle |
+| `myelin_recall` | Basic search across memory types |
+| `myelin_status` | System status overview |
 
-## How promotion works
+## What Makes Myelin Different
+
+| Feature | Myelin | mem0 | Zep | LangMem |
+|---------|--------|------|-----|---------|
+| Procedural memory | Yes (auto-learned) | No | No | No |
+| Knowledge graph | Yes (evidence-weighted) | Yes (basic) | Yes | No |
+| Temporal reasoning | Yes (state transitions) | No | Yes (basic) | No |
+| Cognitive processes | 7 (consolidation, reflection, etc.) | No | No | No |
+| Cross-agent transfer | Yes (capability-aware) | No | No | No |
+| Context assembly | Yes (multi-signal) | No | No | No |
+| Bayesian confidence | Yes (with calibration) | No | No | No |
+| Sequence alignment | Yes (ClustalW-inspired) | No | No | No |
+| LLM dependency | Optional (embeddings only) | Required | Required | Required |
+| Local-first | Yes (SQLite) | Cloud | Cloud/Self-host | Framework |
+
+## How Promotion Works
 
 ```
 Agent actions --> Episodes --> Cluster detection --> ACT-R activation scoring
-  --> Sequence alignment --> Procedure extraction --> Bayesian validation
-  --> Composition check --> Active procedure
+  --> ClustalW sequence alignment --> Consensus extraction --> Procedure creation
+  --> Bayesian validation --> SOAR composition check --> Active procedure
 ```
 
-Activation equation (ACT-R, Anderson et al.):
+## Math
+
+**ACT-R Activation**: `B(i) = ln(sum_j(t_j^(-d)))` where t_j is time since j-th access, d=0.5 decay
+
+**Bayesian Confidence**: On success: `c = c + (1-c) * 0.15`. On failure: `c = c * (1 - 0.15)`. Bounded [0.05, 0.99].
+
+**Ebbinghaus Decay**: `R = e^(-t/S)` where t is time in hours, S is stability
+
+**Multi-Signal Score**: `0.25*text + 0.25*vector + 0.20*entity + 0.15*temporal + 0.15*activation`
+
+**Temporal Score**: `confidence * 0.4 + recency * 0.3 + currency_boost * 0.3`
+
+## Research Foundation
+
+Myelin combines ideas from established cognitive architectures:
+- **ACT-R** (Carnegie Mellon, 40+ years) -- activation equations for memory retrieval and promotion scoring
+- **SOAR** (Michigan, 40+ years) -- chunking for procedure composition, impasse detection for learning goals
+- **Stanford Generative Agents** (Park et al., 2023) -- reflection for higher-order knowledge synthesis
+- **CoALA** (Princeton, 2023) -- modular memory architecture with structured action spaces
+- **ClustalW** (Thompson et al., 1994) -- progressive multiple sequence alignment adapted for action sequences
+
+## Project Structure
+
 ```
-B(i) = ln(sum_j(t_j^(-0.5)))
+src/myelin/
+  core/           schema, models, database, activation math
+  memory/         episodic, semantic, procedural, clustering, alignment, retriever
+  knowledge/      entities, graph, temporal
+  intelligence/   context assembler
+  cognitive/      consolidator, reflector, promoter, composer, decayer, challenger, sleep
+  metacognition/  confidence maps, impasse detection
+  transfer/       agent profiling, transfer protocol
+  tools/          MCP tool handlers
+  server.py       MCP server entry point
+  session.py      session lifecycle
 ```
 
-A memory's activation depends on how recently AND how frequently it's been accessed. No arbitrary thresholds.
-
-## Development
-
-```bash
-git clone https://github.com/Niraven/myelin.git
-cd myelin
-pip install -e ".[dev]"
-pytest tests/ -v
-```
-
-## Tech stack
+## Tech Stack
 
 - Python 3.11+
 - SQLite + FTS5 (full-text search) + sqlite-vec (vector search)
@@ -98,13 +198,14 @@ pytest tests/ -v
 - Pydantic for data models
 - Optional: nomic-embed-text-v1.5 for local embeddings
 
-## Research
+## Development
 
-Myelin combines ideas from four cognitive architectures:
-- **ACT-R** (Carnegie Mellon, 40 years) -- activation equations for promotion scoring
-- **SOAR** (Michigan, 40 years) -- chunking for procedure composition, impasse detection
-- **Stanford Generative Agents** (Park et al., 2023) -- reflection for higher-order knowledge
-- **CoALA** (Princeton, 2023) -- modular memory with structured action spaces
+```bash
+git clone https://github.com/Niraven/myelin.git
+cd myelin
+pip install -e ".[dev]"
+PYTHONPATH=src python -m pytest tests/ -v
+```
 
 ## License
 

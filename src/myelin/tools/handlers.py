@@ -1,4 +1,4 @@
-"""MCP tool handlers for all 7 Myelin tools."""
+"""MCP tool handlers for all 16 Myelin tools."""
 
 from __future__ import annotations
 
@@ -8,25 +8,30 @@ from typing import Any
 
 from ..core.models import (
     ActionType,
+    AgentProfile,
     Episode,
     GoalStatus,
-    LearningGoal,
-    NodeType,
     Procedure,
     ProcedureStatus,
     ProcedureStep,
-    SemanticNode,
-    SourceType,
     StepType,
 )
+from ..intelligence.context import ContextAssembler
+from ..knowledge.entities import EntityStore
+from ..knowledge.graph import KnowledgeGraph
+from ..knowledge.temporal import TemporalIndex
 from ..memory.embedding import EmbeddingProvider
 from ..memory.episodic import EpisodicMemory
 from ..memory.procedural import ProceduralMemory
+from ..memory.retriever import MultiSignalRetriever
 from ..memory.semantic import SemanticMemory
+from ..metacognition.confidence import ConfidenceMap
+from ..transfer.profiling import AgentProfiler
+from ..transfer.protocol import TransferProtocol
 
 
 class ToolHandlers:
-    """Implements all 7 MCP tool operations."""
+    """Implements all 16 MCP tool operations."""
 
     def __init__(
         self,
@@ -34,13 +39,36 @@ class ToolHandlers:
         semantic: SemanticMemory,
         procedural: ProceduralMemory,
         embedder: EmbeddingProvider,
+        entity_store: EntityStore | None = None,
+        graph: KnowledgeGraph | None = None,
+        temporal: TemporalIndex | None = None,
+        retriever: MultiSignalRetriever | None = None,
+        context_assembler: ContextAssembler | None = None,
+        transfer_protocol: TransferProtocol | None = None,
+        confidence_map: ConfidenceMap | None = None,
+        agent_profiler: AgentProfiler | None = None,
     ):
         self.episodic = episodic
         self.semantic = semantic
         self.procedural = procedural
         self.embedder = embedder
+        self.db = episodic.db
 
-    # ── myelin_observe ─────────────────────────────────────────
+        self.entities = entity_store or EntityStore(self.db)
+        self.graph = graph or KnowledgeGraph(self.db)
+        self.temporal = temporal or TemporalIndex(self.db)
+        self.retriever = retriever or MultiSignalRetriever(
+            self.db, self.entities, self.graph, self.temporal
+        )
+        self.confidence_map = confidence_map or ConfidenceMap(self.db)
+        self.profiler = agent_profiler or AgentProfiler(self.db)
+        self.transfer = transfer_protocol or TransferProtocol(self.db, self.procedural)
+        self.assembler = context_assembler or ContextAssembler(
+            self.db, self.retriever, self.entities, self.graph,
+            self.temporal, self.procedural, self.confidence_map, self.embedder,
+        )
+
+    # ── 1. myelin_observe ─────────────────────────────────────
 
     async def observe(
         self,
@@ -55,7 +83,6 @@ class ToolHandlers:
         domain: str | None = None,
         tags: list[str] | None = None,
     ) -> dict[str, Any]:
-        """Record an agent action as an episodic memory."""
         embedding = self.embedder.embed(content_text) or None
 
         episode = Episode(
@@ -74,6 +101,17 @@ class ToolHandlers:
 
         episode_id = self.episodic.record(episode)
 
+        self.entities.process_episode(
+            episode_id=episode_id,
+            content_text=content_text,
+            action=action,
+            action_type=action_type,
+            domain=domain,
+        )
+
+        if domain:
+            self.confidence_map.update_domain(domain, episode_delta=1)
+
         self._check_learning_goals(domain, agent_id)
 
         return {
@@ -82,7 +120,7 @@ class ToolHandlers:
             "total_episodes": self.episodic.count(agent_id),
         }
 
-    # ── myelin_recall ──────────────────────────────────────────
+    # ── 2. myelin_recall ──────────────────────────────────────
 
     async def recall(
         self,
@@ -92,7 +130,6 @@ class ToolHandlers:
         domain: str | None = None,
         min_confidence: float = 0.0,
     ) -> dict[str, Any]:
-        """Search across all memory types for relevant knowledge."""
         types = memory_types or ["episodic", "semantic", "procedural"]
         query_vec = self.embedder.embed(query) or None
         results: dict[str, list] = {}
@@ -123,7 +160,26 @@ class ToolHandlers:
             "total_results": sum(len(v) for v in results.values()),
         }
 
-    # ── myelin_execute_procedure ───────────────────────────────
+    # ── 3. myelin_context ─────────────────────────────────────
+
+    async def context(
+        self,
+        query: str,
+        domain: str | None = None,
+        agent_id: str | None = None,
+        max_memories: int = 10,
+        max_procedures: int = 3,
+    ) -> dict[str, Any]:
+        """Assemble complete context for the current situation."""
+        return self.assembler.assemble(
+            query=query,
+            domain=domain,
+            agent_id=agent_id,
+            max_memories=max_memories,
+            max_procedures=max_procedures,
+        )
+
+    # ── 4. myelin_execute_procedure ───────────────────────────
 
     async def execute_procedure(
         self,
@@ -131,7 +187,6 @@ class ToolHandlers:
         agent_id: str,
         context: dict | None = None,
     ) -> dict[str, Any]:
-        """Find and return the best matching procedure for a trigger."""
         query_vec = self.embedder.embed(query) or None
         matches = self.procedural.find_matching(query, query_vec, limit=3)
 
@@ -139,7 +194,7 @@ class ToolHandlers:
             return {
                 "found": False,
                 "message": "No matching procedure found.",
-                "suggestion": "Try myelin_recall to search broader memory.",
+                "suggestion": "Try myelin_context for broader intelligence.",
             }
 
         best = matches[0]
@@ -159,7 +214,7 @@ class ToolHandlers:
             ],
         }
 
-    # ── myelin_procedure_feedback ──────────────────────────────
+    # ── 5. myelin_procedure_feedback ──────────────────────────
 
     async def procedure_feedback(
         self,
@@ -168,7 +223,6 @@ class ToolHandlers:
         modifications: list[dict] | None = None,
         notes: str | None = None,
     ) -> dict[str, Any]:
-        """Report execution outcome for a procedure."""
         new_confidence = self.procedural.record_execution(procedure_id, success)
 
         if modifications:
@@ -183,14 +237,13 @@ class ToolHandlers:
             "status": proc["status"] if proc else "unknown",
         }
 
-    # ── myelin_confidence ──────────────────────────────────────
+    # ── 6. myelin_confidence ──────────────────────────────────
 
     async def confidence(
         self,
         domain: str | None = None,
         procedure_id: str | None = None,
     ) -> dict[str, Any]:
-        """Query confidence levels across domains or for a specific procedure."""
         result: dict[str, Any] = {}
 
         if procedure_id:
@@ -206,9 +259,7 @@ class ToolHandlers:
                 }
 
         if domain:
-            from ..core.database import Database
-            db = self.episodic.db
-            row = db.fetchone(
+            row = self.db.fetchone(
                 "SELECT * FROM confidence_map WHERE domain = ?", (domain,)
             )
             if row:
@@ -218,8 +269,7 @@ class ToolHandlers:
             result["domain_procedures"] = len(procedures)
 
         if not domain and not procedure_id:
-            db = self.episodic.db
-            domains = db.fetchall(
+            domains = self.db.fetchall(
                 "SELECT * FROM confidence_map ORDER BY confidence DESC LIMIT 20"
             )
             result["all_domains"] = [dict(d) for d in domains]
@@ -228,7 +278,7 @@ class ToolHandlers:
 
         return result
 
-    # ── myelin_teach ───────────────────────────────────────────
+    # ── 7. myelin_teach ───────────────────────────────────────
 
     async def teach(
         self,
@@ -241,7 +291,6 @@ class ToolHandlers:
         postconditions: list[str] | None = None,
         domain: str | None = None,
     ) -> dict[str, Any]:
-        """Manually teach a procedure."""
         trigger_embedding = self.embedder.embed(trigger_pattern) or None
 
         procedure = Procedure(
@@ -278,23 +327,20 @@ class ToolHandlers:
             "steps_count": len(steps),
         }
 
-    # ── myelin_status ──────────────────────────────────────────
+    # ── 8. myelin_status ──────────────────────────────────────
 
     async def status(self, agent_id: str | None = None) -> dict[str, Any]:
-        """Get overall Myelin system status."""
-        db = self.episodic.db
-
         total_episodes = self.episodic.count(agent_id)
         total_semantic = self.semantic.count()
         total_procedures = self.procedural.count()
         active_procedures = self.procedural.count(ProcedureStatus.ACTIVE)
 
-        goals = db.fetchall(
+        goals = self.db.fetchall(
             "SELECT * FROM learning_goals WHERE status = ?",
             (GoalStatus.ACTIVE.value,),
         )
 
-        last_run = db.fetchone(
+        last_run = self.db.fetchone(
             "SELECT * FROM process_runs ORDER BY started_at DESC LIMIT 1"
         )
 
@@ -307,18 +353,260 @@ class ToolHandlers:
                 "draft": self.procedural.count(ProcedureStatus.DRAFT),
                 "archived": self.procedural.count(ProcedureStatus.ARCHIVED),
             },
+            "entities": self.entities.count(),
+            "relationships": self.graph.count_relationships(),
+            "temporal_states": self.temporal.count(),
             "learning_goals": len(goals),
             "last_cognitive_process": dict(last_run) if last_run else None,
+        }
+
+    # ── 9. myelin_query ───────────────────────────────────────
+
+    async def query(
+        self,
+        query: str,
+        limit: int = 10,
+        domain: str | None = None,
+        weights: dict[str, float] | None = None,
+    ) -> dict[str, Any]:
+        """Multi-signal retrieval across all memory types."""
+        query_vec = self.embedder.embed(query) or None
+        results = self.retriever.retrieve(
+            query, query_embedding=query_vec, domain=domain,
+            limit=limit, weights=weights,
+        )
+        return {
+            "query": query,
+            "results": [
+                {
+                    "id": r.get("id"),
+                    "source_type": r.get("_source_type"),
+                    "content": r.get("content_text") or r.get("content") or r.get("name", ""),
+                    "composite_score": r.get("_composite_score", 0),
+                    "scores": r.get("_scores", {}),
+                }
+                for r in results
+            ],
+            "total": len(results),
+        }
+
+    # ── 10. myelin_graph_query ────────────────────────────────
+
+    async def graph_query(
+        self,
+        entity_name: str | None = None,
+        entity_id: str | None = None,
+        direction: str = "both",
+        relation_types: list[str] | None = None,
+        max_depth: int = 2,
+    ) -> dict[str, Any]:
+        """Explore the knowledge graph around an entity."""
+        eid = entity_id
+        if not eid and entity_name:
+            found = self.entities.search(entity_name)
+            if found:
+                eid = found[0]["id"]
+
+        if not eid:
+            return {"found": False, "error": "Entity not found"}
+
+        entity = self.entities.get_entity(eid)
+        neighbors = self.graph.get_neighbors(
+            eid, relation_types=relation_types, direction=direction, limit=20
+        )
+        subgraph = self.graph.bfs_subgraph(eid, max_depth=max_depth, max_nodes=30)
+
+        return {
+            "found": True,
+            "entity": {
+                "id": eid,
+                "name": entity["canonical_name"] if entity else "",
+                "type": entity["entity_type"] if entity else "",
+                "mention_count": entity.get("mention_count", 0) if entity else 0,
+            },
+            "neighbors": [
+                {
+                    "id": n["id"],
+                    "name": n.get("canonical_name", ""),
+                    "type": n.get("entity_type", ""),
+                    "relation": n.get("relation_type", ""),
+                    "strength": n.get("strength", 1.0),
+                }
+                for n in neighbors
+            ],
+            "subgraph": {
+                "node_count": len(subgraph["nodes"]),
+                "edge_count": len(subgraph["edges"]),
+                "nodes": [
+                    {"id": n["id"], "name": n.get("canonical_name", "")}
+                    for n in subgraph["nodes"]
+                ],
+            },
+        }
+
+    # ── 11. myelin_temporal ───────────────────────────────────
+
+    async def temporal_query(
+        self,
+        entity_name: str | None = None,
+        entity_id: str | None = None,
+        domain: str | None = None,
+    ) -> dict[str, Any]:
+        """Query temporal state of entities or domains."""
+        if domain:
+            states = self.temporal.get_current_states_for_domain(domain)
+            return {
+                "domain": domain,
+                "current_states": [
+                    {
+                        "entity_id": s.get("entity_id"),
+                        "state": s["state_description"],
+                        "since": s.get("valid_from"),
+                        "confidence": s.get("confidence", 0.5),
+                    }
+                    for s in states
+                ],
+            }
+
+        eid = entity_id
+        if not eid and entity_name:
+            found = self.entities.search(entity_name)
+            if found:
+                eid = found[0]["id"]
+
+        if not eid:
+            return {"found": False, "error": "Entity not found"}
+
+        current = self.temporal.get_current_state(eid)
+        history = self.temporal.get_state_history(eid)
+        transitions = self.temporal.get_state_transitions(eid)
+
+        return {
+            "found": True,
+            "entity_id": eid,
+            "current_state": {
+                "description": current["state_description"],
+                "since": current.get("valid_from"),
+                "confidence": current.get("confidence", 0.5),
+            } if current else None,
+            "history": [
+                {
+                    "state": h["state_description"],
+                    "from": h.get("valid_from"),
+                    "until": h.get("valid_until"),
+                }
+                for h in history[:10]
+            ],
+            "transitions": [
+                {
+                    "from_state": t["from_state"],
+                    "to_state": t["to_state"],
+                    "when": t.get("changed_at"),
+                }
+                for t in transitions[:10]
+            ],
+        }
+
+    # ── 12. myelin_entities ───────────────────────────────────
+
+    async def entities_query(
+        self,
+        search: str | None = None,
+        entity_type: str | None = None,
+        limit: int = 20,
+    ) -> dict[str, Any]:
+        """Search and browse extracted entities."""
+        if search:
+            results = self.entities.search(search)
+            return {
+                "query": search,
+                "entities": [
+                    {
+                        "id": e["id"],
+                        "name": e["canonical_name"],
+                        "type": e["entity_type"],
+                        "mention_count": e.get("mention_count", 1),
+                    }
+                    for e in results[:limit]
+                ],
+            }
+
+        top = self.entities.get_top_entities(limit=limit)
+        if entity_type:
+            top = [e for e in top if e.get("entity_type") == entity_type]
+
+        return {
+            "entities": [
+                {
+                    "id": e["id"],
+                    "name": e["canonical_name"],
+                    "type": e["entity_type"],
+                    "mention_count": e.get("mention_count", 1),
+                }
+                for e in top
+            ],
+            "total": self.entities.count(),
+        }
+
+    # ── 13. myelin_transfer_export ────────────────────────────
+
+    async def transfer_export(
+        self,
+        procedure_id: str,
+        source_agent: str,
+        target_agent: str,
+    ) -> dict[str, Any]:
+        """Package a procedure for transfer to another agent."""
+        return self.transfer.export_procedure(procedure_id, source_agent, target_agent)
+
+    # ── 14. myelin_transfer_import ────────────────────────────
+
+    async def transfer_import(
+        self,
+        package: dict[str, Any],
+        agent_id: str,
+    ) -> dict[str, Any]:
+        """Import a procedure from another agent."""
+        return self.transfer.import_procedure(package, agent_id)
+
+    # ── 15. myelin_transfer_discover ──────────────────────────
+
+    async def transfer_discover(
+        self,
+        source_agent: str,
+        target_agent: str,
+        min_confidence: float = 0.6,
+    ) -> dict[str, Any]:
+        """Discover transferable procedures between agents."""
+        available = self.transfer.get_transferable_procedures(
+            source_agent, target_agent, min_confidence
+        )
+        return {
+            "source_agent": source_agent,
+            "target_agent": target_agent,
+            "transferable_procedures": available,
+            "count": len(available),
+        }
+
+    # ── 16. myelin_sleep ──────────────────────────────────────
+
+    async def trigger_sleep(self, agent_id: str | None = None) -> dict[str, Any]:
+        """Trigger a sleep consolidation cycle manually."""
+        from ..cognitive.sleep import SleepCycle
+        sleep = SleepCycle(self.db)
+        result = await sleep.run()
+        return {
+            "status": "completed",
+            "process": "sleep",
+            **result,
         }
 
     # ── Internal helpers ───────────────────────────────────────
 
     def _check_learning_goals(self, domain: str | None, agent_id: str) -> None:
-        """Check if this episode contributes to any active learning goal."""
         if not domain:
             return
-        db = self.episodic.db
-        goals = db.fetchall(
+        goals = self.db.fetchall(
             "SELECT * FROM learning_goals WHERE domain = ? AND status = ?",
             (domain, GoalStatus.ACTIVE.value),
         )
@@ -328,4 +616,4 @@ class ToolHandlers:
             if new_count >= goal["episodes_needed"]:
                 updates["status"] = GoalStatus.ACHIEVED.value
                 updates["resolved_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
-            db.update("learning_goals", goal["id"], updates)
+            self.db.update("learning_goals", goal["id"], updates)
