@@ -1,10 +1,29 @@
-# Myelin
+<p align="center">
+  <img src="assets/brand/myelin-wordmark.svg" alt="Myelin: mem0 remembers. Myelin learns." width="760">
+</p>
 
-**mem0 remembers. Myelin learns.**
+<p align="center">
+  <a href="https://github.com/Niraven/myelin/actions/workflows/ci.yml"><img src="https://github.com/Niraven/myelin/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <img src="https://img.shields.io/badge/python-3.11%2B-3776AB" alt="Python 3.11+">
+  <img src="https://img.shields.io/badge/MCP-native-0F766E" alt="MCP native">
+  <img src="https://img.shields.io/badge/storage-SQLite-1D4ED8" alt="SQLite">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-F8D36A" alt="MIT license"></a>
+</p>
+
+<p align="center">
+  <strong>mem0 remembers. Myelin learns.</strong>
+</p>
 
 Myelin is a cognitive memory layer for AI agents that learns procedures from behavior, builds knowledge graphs from observations, and transfers knowledge across agents via MCP.
 
 Named after the biological myelin sheath that accelerates neural signal transmission, Myelin accelerates AI agents by giving them persistent, structured memory that improves with use.
+
+## Start Here
+
+- Run the proof demo: `python examples/procedure_learning_demo.py`
+- Read the launch plan: [docs/LAUNCH_PLAN.md](docs/LAUNCH_PLAN.md)
+- Use the launch copy: [docs/LAUNCH_KIT.md](docs/LAUNCH_KIT.md)
+- Use the brand assets: [docs/BRAND.md](docs/BRAND.md)
 
 ## Why Myelin
 
@@ -110,6 +129,27 @@ Add to your MCP client config:
     }
   }
 }
+```
+
+### Verify Procedure Learning
+
+From a checkout:
+
+```bash
+pip install -e ".[dev]"
+python examples/procedure_learning_demo.py
+```
+
+The demo observes repeated deployment actions and returns a learned procedure:
+
+```text
+Learned procedure: auto_git_npm_docker
+Steps:
+  1. git pull origin main
+  2. npm test
+  3. docker build myelin:latest
+  4. docker push registry/myelin:latest
+  5. kubectl rollout restart deployment/myelin
 ```
 
 ### Programmatic Usage
@@ -228,8 +268,18 @@ src/myelin/
 git clone https://github.com/Niraven/myelin.git
 cd myelin
 pip install -e ".[dev]"
-PYTHONPATH=src python -m pytest tests/ -v
+ruff format --check src/ tests/ examples/
+ruff check src/ tests/ examples/
+mypy src/myelin/ --ignore-missing-imports
+pytest tests/ -q
+python examples/procedure_learning_demo.py
 ```
+
+## Community
+
+- Contributing guide: [CONTRIBUTING.md](CONTRIBUTING.md)
+- Security policy: [SECURITY.md](SECURITY.md)
+- Brand guide: [docs/BRAND.md](docs/BRAND.md)
 
 ## License
 
