@@ -12,8 +12,7 @@ Agenternal-inspired: 3+ semantic memory nodes in a domain → schema.
 from __future__ import annotations
 
 import json
-import math
-from collections import defaultdict, Counter
+from collections import Counter
 from datetime import datetime, timedelta
 from typing import Any
 from uuid import uuid4
@@ -57,10 +56,26 @@ def extract_action_type(content: str) -> str:
     content_lower = content.lower()
     # Common action prefixes
     action_prefixes = [
-        "running", "executing", "calling", "deploying", "building",
-        "testing", "configuring", "installing", "updating", "creating",
-        "removing", "checking", "verifying", "analyzing", "processing",
-        "using", "applying", "starting", "stopping", "restarting",
+        "running",
+        "executing",
+        "calling",
+        "deploying",
+        "building",
+        "testing",
+        "configuring",
+        "installing",
+        "updating",
+        "creating",
+        "removing",
+        "checking",
+        "verifying",
+        "analyzing",
+        "processing",
+        "using",
+        "applying",
+        "starting",
+        "stopping",
+        "restarting",
     ]
     for prefix in action_prefixes:
         if content_lower.startswith(prefix):
@@ -79,7 +94,7 @@ def extract_entities_from_content(content: str) -> list[str]:
     # Heuristic: capitalized words, code-like terms, tool names
     entities: list[str] = []
     for w in words:
-        clean = w.strip('"\'(),.;:!?')
+        clean = w.strip("\"'(),.;:!?")
         if not clean or len(clean) < 2:
             continue
         if clean[0].isupper() or "_" in clean or "-" in clean:
@@ -212,7 +227,9 @@ class SchemaLearner(CognitiveProcess):
                 if j in assigned:
                     continue
                 # Node j joins cluster if it's similar to ANY node in cluster
-                if any(sim_matrix[k][j] >= JACCARD_THRESHOLD for k in range(n) if nodes[k] in cluster):
+                if any(
+                    sim_matrix[k][j] >= JACCARD_THRESHOLD for k in range(n) if nodes[k] in cluster
+                ):
                     cluster.append(nodes[j])
                     assigned.add(j)
             if len(cluster) >= MIN_CLUSTER_SIZE:
@@ -225,9 +242,7 @@ class SchemaLearner(CognitiveProcess):
 
     # ── Schema Induction ───────────────────────────────────────────
 
-    def _induce_schema(
-        self, cluster: list[dict[str, Any]], domain: str
-    ) -> SchemaModel | None:
+    def _induce_schema(self, cluster: list[dict[str, Any]], domain: str) -> SchemaModel | None:
         """Induce a schema from a cluster of 3+ semantic nodes.
 
         1. Extract common patterns (shared entities, action types, success rate)
@@ -258,9 +273,7 @@ class SchemaLearner(CognitiveProcess):
 
         # Shared action types (node_type)
         node_types = [n.get("node_type", "") for n in cluster]
-        shared_types = [
-            t for t, c in Counter(node_types).most_common() if c >= len(cluster) * 0.5
-        ]
+        shared_types = [t for t, c in Counter(node_types).most_common() if c >= len(cluster) * 0.5]
 
         # Average confidence
         avg_confidence = sum(float(n.get("confidence", 0.5)) for n in cluster) / len(cluster)
@@ -411,15 +424,18 @@ class SchemaLearner(CognitiveProcess):
         """Archive schemas not reinforced in N days."""
         cutoff = (datetime.utcnow() - timedelta(days=stale_days)).isoformat()
         stale = self.db.fetchall(
-            "SELECT id FROM schemas "
-            "WHERE updated_at < ? AND status NOT IN ('archived', 'refuted')",
+            "SELECT id FROM schemas WHERE updated_at < ? AND status NOT IN ('archived', 'refuted')",
             (cutoff,),
         )
         for s in stale:
-            self.db.update("schemas", s["id"], {
-                "status": SchemaStatus.ARCHIVED.value,
-                "updated_at": _now_iso(),
-            })
+            self.db.update(
+                "schemas",
+                s["id"],
+                {
+                    "status": SchemaStatus.ARCHIVED.value,
+                    "updated_at": _now_iso(),
+                },
+            )
         return len(stale)
 
     def _check_contradictions(self) -> int:
@@ -456,10 +472,14 @@ class SchemaLearner(CognitiveProcess):
                     should_refute = True
 
             if should_refute:
-                self.db.update("schemas", s["id"], {
-                    "status": SchemaStatus.REFUTED.value,
-                    "updated_at": _now_iso(),
-                })
+                self.db.update(
+                    "schemas",
+                    s["id"],
+                    {
+                        "status": SchemaStatus.REFUTED.value,
+                        "updated_at": _now_iso(),
+                    },
+                )
                 refuted += 1
 
         return refuted

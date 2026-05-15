@@ -16,8 +16,6 @@ import urllib.error
 import urllib.request
 from typing import Any, Protocol, cast
 
-import numpy as np
-
 log = logging.getLogger("myelin.embedding")
 
 # ---------------------------------------------------------------------------
@@ -76,9 +74,7 @@ class LocalEmbedding:
         try:
             from sentence_transformers import SentenceTransformer
 
-            self._model = SentenceTransformer(
-                self._model_name, trust_remote_code=True
-            )
+            self._model = SentenceTransformer(self._model_name, trust_remote_code=True)
             self._dim = int(self._model.get_embedding_dimension() or 768)
         except ImportError as err:
             raise ImportError(
@@ -160,7 +156,7 @@ class ApiEmbedding:
         if uncached:
             # For batch, call the API for each uncached text
             # (some providers support true batch, but we handle sequentially for simplicity)
-            for j, t in zip(uncached_idx, uncached):
+            for j, t in zip(uncached_idx, uncached, strict=False):
                 emb = self._call(t)
                 self._cache[t] = emb
                 results[j] = emb

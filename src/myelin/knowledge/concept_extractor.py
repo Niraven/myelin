@@ -9,7 +9,8 @@ from __future__ import annotations
 import json
 import re
 import urllib.request
-from typing import Callable
+from collections.abc import Callable
+from typing import Any
 
 
 class ConceptExtractor:
@@ -35,7 +36,11 @@ Return JSON array: [{{"name": "...", "entity_type": "concept|tool|service"}}]
 Only return entities NOT already in this list: {existing_entities}
 """
 
-    def __init__(self, provider: str | None = None, client: Callable | None = None):
+    def __init__(
+        self,
+        provider: str | None = None,
+        client: Callable[[list[str]], list[dict[str, str]]] | None = None,
+    ):
         self.provider = provider
         self.client = client
 
@@ -80,14 +85,16 @@ Only return entities NOT already in this list: {existing_entities}
         except Exception:
             return []
 
-    def _parse_response(self, data: dict) -> str:
+    def _parse_response(self, data: dict[str, Any]) -> str:
         """Parse LLM response into raw text."""
         # OpenAI format
         if "choices" in data and data["choices"]:
-            return data["choices"][0].get("message", {}).get("content", "")
+            content = data["choices"][0].get("message", {}).get("content", "")
+            return str(content)
         # Ollama format
         if "message" in data:
-            return data["message"].get("content", "")
+            content = data["message"].get("content", "")
+            return str(content)
         return ""
 
     def _parse_entities(self, content: str) -> list[dict[str, str]]:

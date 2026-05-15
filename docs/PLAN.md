@@ -326,9 +326,9 @@ Myelin should get better at its job over time. No user intervention needed.
 
 **Files:** `cognitive/reflector.py`, `server.py` (log query gaps)
 
-### Phase 2.5: Learning OS (✅ Complete — 583 tests)
+### Phase 2.5: Learning OS (✅ Stabilized — 622 tests)
 
-The deep cognitive upgrade. Transforms Myelin from a memory retriever into a true learning OS. 11,658 lines, 9 new subsystems, 337 new tests (all passing).
+The deep cognitive upgrade. Transforms Myelin from a memory retriever into a true learning OS. The current stabilized suite has 622 tests, including migration coverage for V3/V4 databases and trigger coverage for the 50-write consolidation/NREM path.
 
 | Component | What It Does | Lines | Tests |
 |-----------|-------------|-------|-------|
@@ -343,7 +343,7 @@ The deep cognitive upgrade. Transforms Myelin from a memory retriever into a tru
 | **FSRS Scheduler** | FSRS-5 spaced repetition for optimal review timing | 409 | 10 |
 | **Self-Model** | Confidence calibration, bias detection, competence map | 425 | 19 |
 
-**Schema V4:** 7 new tables (lability windows, prediction log, schemas, reconsolidation log, etc.)
+**Schema V4:** Adds the Learning OS tables and performs in-place V3/V4 column migrations so existing Hermes/Myelin databases can upgrade safely.
 
 ### Phase 3: Product (✅ Complete)
 

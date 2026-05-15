@@ -57,24 +57,44 @@ def _extract_action_from_content(content: str) -> str:
     Uses a pre-built mapping for the -ing forms we recognize.
     Falls back to heuristic for unknown actions.
     """
-    _ING_TO_BASE = {
-        "running": "run", "executing": "execute", "calling": "call",
-        "deploying": "deploy", "building": "build",
-        "testing": "test", "configuring": "configure",
-        "installing": "install", "updating": "update", "creating": "create",
-        "removing": "remove", "checking": "check", "verifying": "verify",
-        "analyzing": "analyze", "processing": "process",
-        "using": "use", "applying": "apply",
-        "starting": "start", "stopping": "stop", "restarting": "restart",
-        "fetching": "fetch", "downloading": "download", "uploading": "upload",
-        "pushing": "push", "pulling": "pull",
-        "logging": "log", "monitoring": "monitor", "scanning": "scan",
-        "debugging": "debug", "fixing": "fix", "patching": "patch",
-        "migrating": "migrate", "connecting": "connect",
+    ing_to_base = {
+        "running": "run",
+        "executing": "execute",
+        "calling": "call",
+        "deploying": "deploy",
+        "building": "build",
+        "testing": "test",
+        "configuring": "configure",
+        "installing": "install",
+        "updating": "update",
+        "creating": "create",
+        "removing": "remove",
+        "checking": "check",
+        "verifying": "verify",
+        "analyzing": "analyze",
+        "processing": "process",
+        "using": "use",
+        "applying": "apply",
+        "starting": "start",
+        "stopping": "stop",
+        "restarting": "restart",
+        "fetching": "fetch",
+        "downloading": "download",
+        "uploading": "upload",
+        "pushing": "push",
+        "pulling": "pull",
+        "logging": "log",
+        "monitoring": "monitor",
+        "scanning": "scan",
+        "debugging": "debug",
+        "fixing": "fix",
+        "patching": "patch",
+        "migrating": "migrate",
+        "connecting": "connect",
         "investigating": "investigate",
     }
     content_lower = content.lower()
-    for prefix, base in _ING_TO_BASE.items():
+    for prefix, base in ing_to_base.items():
         if content_lower.startswith(prefix):
             return base
     words = content_lower.split()[:3]
@@ -93,38 +113,66 @@ def _extract_entities_from_content(content: str) -> list[str]:
     words = content.split()
     entities: list[str] = []
     for w in words:
-        clean = w.strip('"\'(),.;:!?[]{}')
+        clean = w.strip("\"'(),.;:!?[]{}")
         if not clean or len(clean) < 3:
             continue
         if clean[0].isupper() and not clean.isupper():
             entities.append(clean.lower())
         if "_" in clean or "-" in clean:
             entities.append(clean.lower())
-        if any(kw in clean.lower() for kw in [
-            "git", "docker", "pip", "npm", "yarn", "aws", "gcp",
-            "kubernetes", "terraform", "postgres", "redis", "nginx",
-            "python", "node", "go", "react", "pytest", "jest",
-        ]):
+        if any(
+            kw in clean.lower()
+            for kw in [
+                "git",
+                "docker",
+                "pip",
+                "npm",
+                "yarn",
+                "aws",
+                "gcp",
+                "kubernetes",
+                "terraform",
+                "postgres",
+                "redis",
+                "nginx",
+                "python",
+                "node",
+                "go",
+                "react",
+                "pytest",
+                "jest",
+            ]
+        ):
             entities.append(clean.lower())
     return entities
 
 
-def _compute_trend(
-    interval_content: str, older_content: str
-) -> str:
+def _compute_trend(interval_content: str, older_content: str) -> str:
     """Estimate trend: improving, declining, or stable."""
     # Count success-related terms
-    recent_success = sum(1 for w in interval_content.lower().split()
-                          if w in ("success", "succeeded", "pass", "passed", "complete"))
-    older_success = sum(1 for w in older_content.lower().split()
-                         if w in ("success", "succeeded", "pass", "passed", "complete"))
-    recent_fail = sum(1 for w in interval_content.lower().split()
-                       if w in ("fail", "failed", "failure", "error", "broken"))
-    older_fail = sum(1 for w in older_content.lower().split()
-                      if w in ("fail", "failed", "failure", "error", "broken"))
+    recent_success = sum(
+        1
+        for w in interval_content.lower().split()
+        if w in ("success", "succeeded", "pass", "passed", "complete")
+    )
+    older_success = sum(
+        1
+        for w in older_content.lower().split()
+        if w in ("success", "succeeded", "pass", "passed", "complete")
+    )
+    recent_fail = sum(
+        1
+        for w in interval_content.lower().split()
+        if w in ("fail", "failed", "failure", "error", "broken")
+    )
+    older_fail = sum(
+        1
+        for w in older_content.lower().split()
+        if w in ("fail", "failed", "failure", "error", "broken")
+    )
 
-    recent_ratio = (recent_success / max(recent_success + recent_fail, 1))
-    older_ratio = (older_success / max(older_success + older_fail, 1))
+    recent_ratio = recent_success / max(recent_success + recent_fail, 1)
+    older_ratio = older_success / max(older_success + older_fail, 1)
 
     delta = recent_ratio - older_ratio
     if delta > 0.15:
@@ -290,9 +338,7 @@ class LLMReflector(CognitiveProcess):
             "level3": level_counts.get("level3", 0),
         }
 
-    def _group_by_domain(
-        self, facts: list[dict[str, Any]]
-    ) -> dict[str, list[dict[str, Any]]]:
+    def _group_by_domain(self, facts: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
         """Group semantic nodes by domain."""
         groups: dict[str, list] = defaultdict(list)
         for fact in facts:
@@ -300,9 +346,7 @@ class LLMReflector(CognitiveProcess):
             groups[d].append(fact)
         return dict(groups)
 
-    def _build_level1_reflection(
-        self, domain: str, facts: list[dict[str, Any]]
-    ) -> str | None:
+    def _build_level1_reflection(self, domain: str, facts: list[dict[str, Any]]) -> str | None:
         """Level 1: Direct domain-level pattern observation.
 
         Extracts: most common action, success rate trend,
@@ -384,10 +428,7 @@ class LLMReflector(CognitiveProcess):
         # Get the primary action for each domain
         domain_actions: dict[str, str] = {}
         for domain, facts in domain_groups.items():
-            all_actions = [
-                _extract_action_from_content(f.get("content", ""))
-                for f in facts
-            ]
+            all_actions = [_extract_action_from_content(f.get("content", "")) for f in facts]
             if all_actions:
                 domain_actions[domain] = Counter(all_actions).most_common(1)[0][0]
             else:
@@ -396,17 +437,13 @@ class LLMReflector(CognitiveProcess):
         # Check sequential dependencies: if domain A episodes were created
         # before domain B episodes, suggest a pipeline
         for i, d1 in enumerate(domains):
-            for d2 in domains[i + 1:]:
+            for d2 in domains[i + 1 :]:
                 facts1 = domain_groups[d1]
                 facts2 = domain_groups[d2]
 
                 # Get average creation time
-                timestamps1 = [
-                    f.get("created_at", "") for f in facts1 if f.get("created_at")
-                ]
-                timestamps2 = [
-                    f.get("created_at", "") for f in facts2 if f.get("created_at")
-                ]
+                timestamps1 = [f.get("created_at", "") for f in facts1 if f.get("created_at")]
+                timestamps2 = [f.get("created_at", "") for f in facts2 if f.get("created_at")]
 
                 # Simple heuristic: if domain A facts were mostly created
                 # before domain B facts, suggest d1 -> d2 pipeline
@@ -454,8 +491,8 @@ class LLMReflector(CognitiveProcess):
 
         # Calculate domain diversity
         domain_sizes = {d: len(f) for d, f in domain_groups.items()}
-        largest_domain = max(domain_sizes, key=domain_sizes.get)
-        smallest_domain = min(domain_sizes, key=domain_sizes.get)
+        largest_domain = max(domain_sizes, key=lambda domain: domain_sizes[domain])
+        smallest_domain = min(domain_sizes, key=lambda domain: domain_sizes[domain])
 
         # Get overall success rate
         total_success = 0
@@ -503,8 +540,12 @@ class LLMReflector(CognitiveProcess):
             # Check if one domain has much higher success than others
             domain_rates: dict[str, float] = {}
             for domain, facts in domain_groups.items():
-                s = sum(1 for f in facts if "success" in (f.get("content", "") or "").lower()
-                        and "fail" not in (f.get("content", "") or "").lower()[:20])
+                s = sum(
+                    1
+                    for f in facts
+                    if "success" in (f.get("content", "") or "").lower()
+                    and "fail" not in (f.get("content", "") or "").lower()[:20]
+                )
                 domain_rates[domain] = s / max(len(facts), 1)
 
             max_rate = max(domain_rates.values()) if domain_rates else 0

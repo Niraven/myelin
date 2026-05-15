@@ -1,24 +1,21 @@
 """Tests for SelfModel — confidence calibration and bias detection."""
 
-import json
 from datetime import datetime
 from uuid import uuid4
 
-from myelin.core.database import Database
-from myelin.core.models import ProcessName
-from myelin.memory.episodic import EpisodicMemory
-from myelin.memory.procedural import ProceduralMemory
-from myelin.memory.semantic import SemanticMemory
 from myelin.cognitive.self_model import (
+    SelfModel,
     assess_domain_competence,
     compute_bias_report,
     detect_confirmation_bias,
     detect_overconfidence,
     detect_recency_bias,
     generate_insights,
-    SelfModel,
 )
-
+from myelin.core.database import Database
+from myelin.memory.episodic import EpisodicMemory
+from myelin.memory.procedural import ProceduralMemory
+from myelin.memory.semantic import SemanticMemory
 
 # ── assess_domain_competence ───────────────────────────────────────
 
@@ -79,9 +76,7 @@ def test_no_confirmation_bias():
 
 def test_high_confirmation_bias():
     """Confidence stays high after failures = confirmation bias."""
-    bias = detect_confirmation_bias(
-        [False, False, False, True], [0.7, 0.65, 0.6, 0.9]
-    )
+    bias = detect_confirmation_bias([False, False, False, True], [0.7, 0.65, 0.6, 0.9])
     assert bias > 0.3
 
 
@@ -110,17 +105,13 @@ def test_high_overconfidence():
 
 def test_compute_bias_report_no_biases():
     """Clean data produces no flagged biases."""
-    report = compute_bias_report(
-        [True, True], [0.8, 0.9], 0.85, 0.85, 0.02
-    )
+    report = compute_bias_report([True, True], [0.8, 0.9], 0.85, 0.85, 0.02)
     assert len(report["biases"]) == 0
 
 
 def test_compute_bias_report_with_biases():
     """Problematic data flags biases."""
-    report = compute_bias_report(
-        [False, False, False], [0.7, 0.65, 0.6], 1.0, 0.3, 0.4
-    )
+    report = compute_bias_report([False, False, False], [0.7, 0.65, 0.6], 1.0, 0.3, 0.4)
     assert len(report["biases"]) >= 1
 
 
@@ -129,19 +120,33 @@ def test_compute_bias_report_with_biases():
 
 def test_insights_novel_domain():
     """Novel domain generates explore recommendation."""
-    insights = generate_insights({
-        "testing": {"level": "novel", "competence_score": 0.2,
-                     "episode_count": 2, "calibration_offset": 0.0, "trend": "stable"},
-    })
+    insights = generate_insights(
+        {
+            "testing": {
+                "level": "novel",
+                "competence_score": 0.2,
+                "episode_count": 2,
+                "calibration_offset": 0.0,
+                "trend": "stable",
+            },
+        }
+    )
     assert any("novel" in i for i in insights)
 
 
 def test_insights_mastered_domain():
     """Mastered domain gets maintain recommendation."""
-    insights = generate_insights({
-        "deployment": {"level": "mastered", "competence_score": 0.9,
-                        "episode_count": 60, "calibration_offset": 0.02, "trend": "improving"},
-    })
+    insights = generate_insights(
+        {
+            "deployment": {
+                "level": "mastered",
+                "competence_score": 0.9,
+                "episode_count": 60,
+                "calibration_offset": 0.02,
+                "trend": "improving",
+            },
+        }
+    )
     assert any("mastered" in i for i in insights)
 
 
@@ -162,6 +167,7 @@ def test_self_model_execute_empty_db(tmp_path):
     _ = db.conn
     model = SelfModel(db, EpisodicMemory(db), SemanticMemory(db), ProceduralMemory(db))
     import asyncio
+
     result = asyncio.run(model.execute())
     assert result["domains_assessed"] == 0
     assert result["biases_detected"] == 0
@@ -176,7 +182,8 @@ def test_self_model_with_data(tmp_path):
     procedural = ProceduralMemory(db)
 
     # Insert some episodes
-    from myelin.core.models import Episode, ActionType
+    from myelin.core.models import ActionType, Episode
+
     for i in range(5):
         ep = Episode(
             agent_id="test",
@@ -191,6 +198,7 @@ def test_self_model_with_data(tmp_path):
 
     model = SelfModel(db, episodic, semantic, procedural)
     import asyncio
+
     result = asyncio.run(model.execute())
     assert result["domains_assessed"] >= 1
     assert "testing" in result.get("competence_map", {})

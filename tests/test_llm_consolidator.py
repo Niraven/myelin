@@ -14,7 +14,6 @@ from __future__ import annotations
 import pytest
 
 from myelin.cognitive.llm_consolidator import (
-    JACCARD_SIMILARITY_THRESHOLD,
     LLMConsolidator,
     _action_sequence_summary,
     _compute_cluster_confidence,
@@ -27,7 +26,6 @@ from myelin.core.database import Database
 from myelin.core.models import ActionType, Episode, NodeType
 from myelin.memory.episodic import EpisodicMemory
 from myelin.memory.semantic import SemanticMemory
-
 
 # ── Fixtures ───────────────────────────────────────────────────────
 
@@ -243,8 +241,7 @@ class TestClustering:
         """Within a domain, similar content should cluster together."""
         # All deployment episodes share "my-app" and "deploy" keywords
         deployment_eps = [
-            ep for ep in seeded_deployment_episodes
-            if ep.get("domain") == "deployment"
+            ep for ep in seeded_deployment_episodes if ep.get("domain") == "deployment"
         ]
         clusters = consolidator._cluster_by_content(deployment_eps)
         # Should produce at least one meaningful cluster
@@ -255,8 +252,7 @@ class TestClustering:
 class TestBuildSummary:
     def test_summary_contains_domain_and_count(self, consolidator, seeded_deployment_episodes):
         deployment_eps = [
-            ep for ep in seeded_deployment_episodes
-            if ep.get("domain") == "deployment"
+            ep for ep in seeded_deployment_episodes if ep.get("domain") == "deployment"
         ]
         summary, metadata = consolidator._build_summary(deployment_eps, "deployment")
         assert "4 observations" in summary
@@ -264,8 +260,7 @@ class TestBuildSummary:
 
     def test_summary_includes_entities(self, consolidator, seeded_deployment_episodes):
         deployment_eps = [
-            ep for ep in seeded_deployment_episodes
-            if ep.get("domain") == "deployment"
+            ep for ep in seeded_deployment_episodes if ep.get("domain") == "deployment"
         ]
         summary, metadata = consolidator._build_summary(deployment_eps, "deployment")
         # my-app should be extracted as an entity
@@ -275,16 +270,14 @@ class TestBuildSummary:
 
     def test_summary_includes_success_rate(self, consolidator, seeded_deployment_episodes):
         deployment_eps = [
-            ep for ep in seeded_deployment_episodes
-            if ep.get("domain") == "deployment"
+            ep for ep in seeded_deployment_episodes if ep.get("domain") == "deployment"
         ]
         summary, metadata = consolidator._build_summary(deployment_eps, "deployment")
         assert metadata["success_rate"] >= 0.75  # 3/4 successful
 
     def test_summary_includes_action_pattern(self, consolidator, seeded_deployment_episodes):
         deployment_eps = [
-            ep for ep in seeded_deployment_episodes
-            if ep.get("domain") == "deployment"
+            ep for ep in seeded_deployment_episodes if ep.get("domain") == "deployment"
         ]
         summary, metadata = consolidator._build_summary(deployment_eps, "deployment")
         # Should mention deploy
@@ -295,19 +288,27 @@ class TestBuildSummary:
         """A cluster with failures should include failure context."""
         test_eps = [
             Episode(
-                agent_id="test-agent", session_id="s1",
-                action="run tests", action_type=ActionType.TOOL_CALL,
+                agent_id="test-agent",
+                session_id="s1",
+                action="run tests",
+                action_type=ActionType.TOOL_CALL,
                 content_text="Ran test suite for auth module — 5 tests failed with timeout errors",
-                success=False, domain="testing",
+                success=False,
+                domain="testing",
             ),
             Episode(
-                agent_id="test-agent", session_id="s1",
-                action="run integration tests", action_type=ActionType.TOOL_CALL,
+                agent_id="test-agent",
+                session_id="s1",
+                action="run integration tests",
+                action_type=ActionType.TOOL_CALL,
                 content_text="Ran integration tests for payment service — all 12 passed",
-                success=True, domain="testing",
+                success=True,
+                domain="testing",
             ),
         ]
-        rows = [consolidator.episodic.record(ep) and consolidator.episodic.get(ep.id) for ep in test_eps]
+        rows = [
+            consolidator.episodic.record(ep) and consolidator.episodic.get(ep.id) for ep in test_eps
+        ]
         summary, metadata = consolidator._build_summary(rows, "testing")
         # Should include failure context
         assert "Failure observed" in summary or "fail" in summary.lower()
@@ -328,7 +329,7 @@ class TestFullExecute:
 
     async def test_execute_creates_semantic_nodes(self, consolidator, seeded_deployment_episodes):
         """Full execute() should create semantic nodes."""
-        result = await consolidator.execute()
+        await consolidator.execute()
         # Count semantic nodes
         count = consolidator.semantic.count(NodeType.FACT)
         assert count > 0

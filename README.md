@@ -81,7 +81,7 @@ This simulates Hermes coordinating research, build, and release agents across no
 ## Architecture
 
 ```
-                    MCP Interface (17 tools)
+                    MCP Interface (21 tools)
                            |
             +--------------+--------------+
             |              |              |
@@ -111,13 +111,12 @@ This simulates Hermes coordinating research, build, and release agents across no
 - **Temporal Index**: tracks entity state over time with automatic supersession and transition history.
 
 **Cognitive Processes** run in the background, triggered by write counts, timers, or session boundaries:
-- **Consolidator**: merges recent episodes into semantic nodes (every 50 writes)
-- **Reflector**: generates higher-order insights from semantic nodes (session end)
-- **Promoter**: clusters episodes, aligns sequences, promotes to procedures (session end)
-- **Composer**: chains compatible procedures into meta-procedures (SOAR chunking)
-- **Decayer**: applies Ebbinghaus forgetting curve to stale memories (hourly)
-- **Challenger**: tests and potentially invalidates outdated beliefs (session end)
-- **Sleep**: batch consolidation cycle with 6 phases (session end)
+- **Reconsolidator**: opens lability windows and updates memories when prediction error warrants it.
+- **Prediction Learner**: tracks predicted vs actual procedure outcomes and surprise.
+- **Consolidator/Reflector**: distills episodes into semantic facts and cross-domain insights.
+- **NREM/REM Sleep**: strengthens useful traces, downscales noise, replays priority episodes, and explores counterfactuals.
+- **Promoter/Composer**: promotes repeated action sequences into procedures and chains compatible procedures.
+- **Schema/Curiosity/FSRS/Self-Model**: induces behavioral schemas, detects learning gaps, schedules review, and tracks calibration.
 
 **Intelligence Layer** is the primary interface for agents:
 - **Context Assembler**: fuses all signals into a structured context block with suggested actions
@@ -206,11 +205,15 @@ results = await session.end()
 | `myelin_procedure_feedback` | Report success/failure to update confidence |
 | `myelin_graph_query` | Explore knowledge graph relationships |
 | `myelin_temporal` | Query temporal state of entities/domains |
+| `myelin_what_changed` | Show state transitions in a domain since a timestamp |
+| `myelin_entity_status` | Show current status and recent transitions for an entity |
 | `myelin_entities` | Search extracted entities |
 | `myelin_teach` | Manually teach a procedure |
 | `myelin_transfer_export` | Package procedure for another agent |
 | `myelin_transfer_import` | Import procedure from another agent |
 | `myelin_transfer_discover` | Find transferable procedures between agents |
+| `myelin_visualize` | Export the knowledge graph as Mermaid or D3 JSON |
+| `myelin_profile` | Summarize learned profile facts for an agent |
 | `myelin_confidence` | Query domain/procedure confidence |
 | `myelin_sleep` | Trigger sleep consolidation and procedure promotion |
 | `myelin_recall` | Basic search across memory types |

@@ -27,7 +27,6 @@ from ..memory.procedural import ProceduralMemory
 from ..memory.semantic import SemanticMemory
 from .challenger import Challenger
 from .composer import Composer
-from .consolidator import Consolidator as OldConsolidator
 from .decayer import Decayer
 from .llm_consolidator import LLMConsolidator
 from .llm_reflector import LLMReflector
@@ -36,7 +35,6 @@ from .prediction_learner import PredictionLearner
 from .prioritized_replay import PrioritizedReplay
 from .promoter import Promoter
 from .reconsolidator import ReconsolidationEngine
-from .reflector import Reflector as OldReflector
 from .rem_sleep import REMPhase
 from .schema_learner import SchemaLearner
 
@@ -93,23 +91,26 @@ class CognitiveOrchestrator:
         Returns list of process run results.
         """
         results = []
+        should_run_write_cycle = self._write_count >= NREM_EVERY_N_WRITES
 
         # Reconsolidation check (every 20 writes)
-        if self._write_count > 0 and self._write_count % RECONSOLIDATION_CHECK_WRITES == 0:
-            if self.reconsolidation.should_run():
-                log.info("Triggering reconsolidation (periodic check)")
-                result = await self.reconsolidation.run()
-                results.append({"process": "reconsolidation", **result})
+        if (
+            self._write_count > 0
+            and self._write_count % RECONSOLIDATION_CHECK_WRITES == 0
+            and self.reconsolidation.should_run()
+        ):
+            log.info("Triggering reconsolidation (periodic check)")
+            result = await self.reconsolidation.run()
+            results.append({"process": "reconsolidation", **result})
 
         # LLM Consolidator (every 50 writes)
-        if self._write_count >= NREM_EVERY_N_WRITES and self.llm_consolidator.should_run():
+        if should_run_write_cycle and self.llm_consolidator.should_run():
             log.info("Triggering LLM consolidator (50+ writes)")
             result = await self.llm_consolidator.run()
             results.append({"process": "consolidator", **result})
-            self._write_count = 0
 
         # NREM Sleep (every 50 writes OR when consolidator ran)
-        if self._write_count >= NREM_EVERY_N_WRITES and self.nrem_sleep.should_run():
+        if should_run_write_cycle and self.nrem_sleep.should_run():
             log.info("Triggering NREM sleep (50+ writes)")
             # Run PrioritizedReplay as sub-phase of NREM
             log.info("Running PrioritizedReplay as NREM sub-phase")

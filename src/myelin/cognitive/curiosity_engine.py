@@ -12,19 +12,18 @@ References:
 
 from __future__ import annotations
 
+import contextlib
 import math
 import random
 import time
-from dataclasses import dataclass, field
 from typing import Any
 from uuid import uuid4
 
 from ..core.database import Database
 from ..core.models import (
-    CuriousGoalModel,
     CuriosityTopic,
+    CuriousGoalModel,
     GoalStatus,
-    LearningGoal,
     ProcessName,
 )
 from .base import CognitiveProcess
@@ -44,10 +43,10 @@ def _clamp(value: float, lo: float = 0.0, hi: float = 1.0) -> float:
 
 # ── Constants (from spec §11) ─────────────────────────────────────
 
-N_NOVELTY_MAX = 10       # entity mentions for novelty=0
-P_NOVELTY_MAX = 5        # domain procedures for novelty=0
-E_NOVELTY_MAX = 5        # procedure executions for novelty=0
-R_NOVELTY_MAX = 5        # relationship evidence count for novelty=0
+N_NOVELTY_MAX = 10  # entity mentions for novelty=0
+P_NOVELTY_MAX = 5  # domain procedures for novelty=0
+E_NOVELTY_MAX = 5  # procedure executions for novelty=0
+R_NOVELTY_MAX = 5  # relationship evidence count for novelty=0
 
 # Default weights (spec §3.4)
 W_NOVELTY = 0.30
@@ -56,10 +55,10 @@ W_INFOGAIN = 0.35
 
 # Gap-type-specific weight overrides (spec §3.4, §11.6)
 WEIGHT_OVERRIDES: dict[str, tuple[float, float, float]] = {
-    "entity_undermentions":            (0.45, 0.35, 0.20),
-    "domain_low_procedures":           (0.40, 0.40, 0.20),
-    "domain_high_uncertainty":         (0.15, 0.50, 0.35),
-    "procedure_needs_testing":         (0.15, 0.35, 0.50),
+    "entity_undermentions": (0.45, 0.35, 0.20),
+    "domain_low_procedures": (0.40, 0.40, 0.20),
+    "domain_high_uncertainty": (0.15, 0.50, 0.35),
+    "procedure_needs_testing": (0.15, 0.35, 0.50),
     "relationship_needs_verification": (0.30, 0.35, 0.35),
 }
 
@@ -184,7 +183,7 @@ def compute_infogain_procedure(
     execution_count: int,
 ) -> float:
     """information_gain_potential(p) =
-        |predicted - actual| + (1 - min(exec_count / 10, 1.0))
+    |predicted - actual| + (1 - min(exec_count / 10, 1.0))
     """
     pred = predicted_success_rate if predicted_success_rate is not None else 0.5
     actual = actual_success_rate if actual_success_rate is not None else 0.5
@@ -195,7 +194,7 @@ def compute_infogain_procedure(
 
 def compute_infogain_relationship(evidence_count: int, strength: float) -> float:
     """information_gain_potential(r) =
-        0.5 / (evidence_count + 1) * (1 - strength)
+    0.5 / (evidence_count + 1) * (1 - strength)
     """
     return 0.5 / (evidence_count + 1) * (1.0 - strength)
 
@@ -246,7 +245,7 @@ def compute_prediction_error_variance(
     """Compute variance of δ = predicted - actual across procedures."""
     if len(predicted) < 2 or len(actual) < 2:
         return 0.0
-    deltas = [p - a for p, a in zip(predicted, actual)]
+    deltas = [p - a for p, a in zip(predicted, actual, strict=False)]
     n = len(deltas)
     mean = sum(deltas) / n
     variance = sum((d - mean) ** 2 for d in deltas) / n
@@ -394,9 +393,7 @@ class CuriosityGapDetector:
             domain = r["domain"]
             if domain:
                 domain_counts.setdefault(domain, []).append(r["mention_count"])
-        domain_avgs: dict[str, float] = {
-            d: sum(c) / len(c) for d, c in domain_counts.items()
-        }
+        domain_avgs: dict[str, float] = {d: sum(c) / len(c) for d, c in domain_counts.items()}
 
         for r in rows:
             mention_count = r["mention_count"] or 0
@@ -413,6 +410,7 @@ class CuriosityGapDetector:
                 if created:
                     try:
                         from datetime import datetime
+
                         created_dt = datetime.strptime(created.split(".")[0], "%Y-%m-%dT%H:%M:%S")
                         age_days = (datetime.utcnow() - created_dt).days
                         if age_days > 30:
@@ -430,22 +428,24 @@ class CuriosityGapDetector:
             )
             score = compute_curiosity_score(novelty, uncertainty, infogain, GAP_ENTITY)
 
-            results.append(CuriosityTopic(
-                gap_type=GAP_ENTITY,
-                target_id=r["id"],
-                target_name=r["name"],
-                domain=domain,
-                raw_score=3 - mention_count,
-                novelty_score=novelty,
-                uncertainty_score=uncertainty,
-                infogain_potential=infogain,
-                curiosity_score=score,
-                metadata={
-                    ENTITY_MENTION_COUNT: mention_count,
-                    DOMAIN_AVG_MENTIONS: avg_mentions,
-                    "entity_type": r["entity_type"],
-                },
-            ))
+            results.append(
+                CuriosityTopic(
+                    gap_type=GAP_ENTITY,
+                    target_id=r["id"],
+                    target_name=r["name"],
+                    domain=domain,
+                    raw_score=3 - mention_count,
+                    novelty_score=novelty,
+                    uncertainty_score=uncertainty,
+                    infogain_potential=infogain,
+                    curiosity_score=score,
+                    metadata={
+                        ENTITY_MENTION_COUNT: mention_count,
+                        DOMAIN_AVG_MENTIONS: avg_mentions,
+                        "entity_type": r["entity_type"],
+                    },
+                )
+            )
         return results
 
     # ── 2.2 Low-Procedure Domain Detector ───────────────────────
@@ -467,11 +467,7 @@ class CuriosityGapDetector:
             domain_conf = r["confidence"] or 0.0
 
             # Skip inherently non-procedural domains: stable + 0 proc + 20+ episodes
-            if (
-                proc_count == 0
-                and ep_count >= 20
-                and trend == "stable"
-            ):
+            if proc_count == 0 and ep_count >= 20 and trend == "stable":
                 continue
 
             # Thresholds from spec §2.2
@@ -484,23 +480,25 @@ class CuriosityGapDetector:
             infogain = compute_infogain_domain(pe_var)
             score = compute_curiosity_score(novelty, uncertainty, infogain, GAP_DOMAIN_LOW)
 
-            results.append(CuriosityTopic(
-                gap_type=GAP_DOMAIN_LOW,
-                target_id=f"domain:{domain}",
-                target_name=domain,
-                domain=domain,
-                raw_score=2 - proc_count,
-                novelty_score=novelty,
-                uncertainty_score=uncertainty,
-                infogain_potential=infogain,
-                curiosity_score=score,
-                metadata={
-                    DOMAIN_PROCEDURE_COUNT: proc_count,
-                    DOMAIN_EPISODE_COUNT: ep_count,
-                    DOMAIN_CONFIDENCE: domain_conf,
-                    DOMAIN_TREND: trend,
-                },
-            ))
+            results.append(
+                CuriosityTopic(
+                    gap_type=GAP_DOMAIN_LOW,
+                    target_id=f"domain:{domain}",
+                    target_name=domain,
+                    domain=domain,
+                    raw_score=2 - proc_count,
+                    novelty_score=novelty,
+                    uncertainty_score=uncertainty,
+                    infogain_potential=infogain,
+                    curiosity_score=score,
+                    metadata={
+                        DOMAIN_PROCEDURE_COUNT: proc_count,
+                        DOMAIN_EPISODE_COUNT: ep_count,
+                        DOMAIN_CONFIDENCE: domain_conf,
+                        DOMAIN_TREND: trend,
+                    },
+                )
+            )
         return results
 
     # ── 2.3 High PE Variance Domain Detector ────────────────────
@@ -544,22 +542,24 @@ class CuriosityGapDetector:
             infogain = pe_var
             score = compute_curiosity_score(novelty, uncertainty, infogain, GAP_DOMAIN_UNCERT)
 
-            results.append(CuriosityTopic(
-                gap_type=GAP_DOMAIN_UNCERT,
-                target_id=f"domain:{domain}",
-                target_name=domain,
-                domain=domain,
-                raw_score=pe_var,
-                novelty_score=novelty,
-                uncertainty_score=uncertainty,
-                infogain_potential=infogain,
-                curiosity_score=score,
-                metadata={
-                    "variance": pe_var,
-                    DOMAIN_PROCEDURE_COUNT: proc_count,
-                    DOMAIN_CONFIDENCE: domain_conf,
-                },
-            ))
+            results.append(
+                CuriosityTopic(
+                    gap_type=GAP_DOMAIN_UNCERT,
+                    target_id=f"domain:{domain}",
+                    target_name=domain,
+                    domain=domain,
+                    raw_score=pe_var,
+                    novelty_score=novelty,
+                    uncertainty_score=uncertainty,
+                    infogain_potential=infogain,
+                    curiosity_score=score,
+                    metadata={
+                        "variance": pe_var,
+                        DOMAIN_PROCEDURE_COUNT: proc_count,
+                        DOMAIN_CONFIDENCE: domain_conf,
+                    },
+                )
+            )
         return results
 
     # ── 2.4 Untested Low-Confidence Procedure Detector ──────────
@@ -582,6 +582,7 @@ class CuriosityGapDetector:
             if last_exc:
                 try:
                     from datetime import datetime
+
                     last_dt = datetime.strptime(last_exc.split(".")[0], "%Y-%m-%dT%H:%M:%S")
                     delta_days = (datetime.utcnow() - last_dt).days
                     if delta_days <= 7:
@@ -600,23 +601,25 @@ class CuriosityGapDetector:
             infogain = compute_infogain_procedure(pred_rate, actual_rate, exec_count)
             score = compute_curiosity_score(novelty, uncertainty, infogain, GAP_PROCEDURE)
 
-            results.append(CuriosityTopic(
-                gap_type=GAP_PROCEDURE,
-                target_id=r["id"],
-                target_name=r["name"],
-                domain=r.get("domain"),
-                raw_score=0.6 - confidence,
-                novelty_score=novelty,
-                uncertainty_score=uncertainty,
-                infogain_potential=infogain,
-                curiosity_score=score,
-                metadata={
-                    PROCEDURE_CONFIDENCE: confidence,
-                    PROCEDURE_EXECUTION_COUNT: exec_count,
-                    PROCEDURE_PREDICTED_SUCCESS: pred_rate,
-                    PROCEDURE_ACTUAL_SUCCESS: actual_rate,
-                },
-            ))
+            results.append(
+                CuriosityTopic(
+                    gap_type=GAP_PROCEDURE,
+                    target_id=r["id"],
+                    target_name=r["name"],
+                    domain=r.get("domain"),
+                    raw_score=0.6 - confidence,
+                    novelty_score=novelty,
+                    uncertainty_score=uncertainty,
+                    infogain_potential=infogain,
+                    curiosity_score=score,
+                    metadata={
+                        PROCEDURE_CONFIDENCE: confidence,
+                        PROCEDURE_EXECUTION_COUNT: exec_count,
+                        PROCEDURE_PREDICTED_SUCCESS: pred_rate,
+                        PROCEDURE_ACTUAL_SUCCESS: actual_rate,
+                    },
+                )
+            )
         return results
 
     # ── 2.5 Unverified Relationship Detector ────────────────────
@@ -642,6 +645,7 @@ class CuriosityGapDetector:
             if last_obs:
                 try:
                     from datetime import datetime
+
                     obs_dt = datetime.strptime(last_obs.split(".")[0], "%Y-%m-%dT%H:%M:%S")
                     age_days = (datetime.utcnow() - obs_dt).days
                     if age_days >= 30:
@@ -657,28 +661,28 @@ class CuriosityGapDetector:
             infogain = compute_infogain_relationship(evidence_count, strength)
             score = compute_curiosity_score(novelty, uncertainty, infogain, GAP_RELATIONSHIP)
 
-            target_name = (
-                f"{r['source_name']} → {r['target_name']} [{r['relation_type']}]"
-            )
+            target_name = f"{r['source_name']} → {r['target_name']} [{r['relation_type']}]"
 
-            results.append(CuriosityTopic(
-                gap_type=GAP_RELATIONSHIP,
-                target_id=r["id"],
-                target_name=target_name,
-                domain=r.get("domain"),
-                raw_score=0.3 - strength,
-                novelty_score=novelty,
-                uncertainty_score=uncertainty,
-                infogain_potential=infogain,
-                curiosity_score=score,
-                metadata={
-                    RELATION_STRENGTH: strength,
-                    RELATION_EVIDENCE_COUNT: evidence_count,
-                    RELATION_SOURCE: r["source_name"],
-                    RELATION_TARGET: r["target_name"],
-                    RELATION_TYPE: r["relation_type"],
-                },
-            ))
+            results.append(
+                CuriosityTopic(
+                    gap_type=GAP_RELATIONSHIP,
+                    target_id=r["id"],
+                    target_name=target_name,
+                    domain=r.get("domain"),
+                    raw_score=0.3 - strength,
+                    novelty_score=novelty,
+                    uncertainty_score=uncertainty,
+                    infogain_potential=infogain,
+                    curiosity_score=score,
+                    metadata={
+                        RELATION_STRENGTH: strength,
+                        RELATION_EVIDENCE_COUNT: evidence_count,
+                        RELATION_SOURCE: r["source_name"],
+                        RELATION_TARGET: r["target_name"],
+                        RELATION_TYPE: r["relation_type"],
+                    },
+                )
+            )
         return results
 
     # ── Helpers ─────────────────────────────────────────────────
@@ -693,7 +697,7 @@ class CuriosityGapDetector:
             (entity_id,),
         )
         if row and row["max_conf"] is not None:
-            return row["max_conf"]
+            return float(row["max_conf"])
         return 0.0
 
     def _pe_variance_for_domain(self, domain: str) -> float:
@@ -704,8 +708,7 @@ class CuriosityGapDetector:
         variance(δ) for >= 2 procedures.
         """
         procs = self.db.fetchall(
-            "SELECT predicted_success_rate, actual_success_rate "
-            "FROM procedures WHERE domain = ? ",
+            "SELECT predicted_success_rate, actual_success_rate FROM procedures WHERE domain = ? ",
             (domain,),
         )
         valid = [p for p in procs if p["predicted_success_rate"] is not None]
@@ -723,7 +726,7 @@ class CuriosityGapDetector:
             return _clamp(var)
         elif len(valid) == 1:
             # Single procedure: use calibration log
-            proc_id = procs[0]["id"] if "id" in procs[0] else None
+            proc_id = procs[0].get("id", None)
             if proc_id:
                 cal = self.db.fetchall(
                     "SELECT predicted_confidence, actual_outcome "
@@ -732,10 +735,7 @@ class CuriosityGapDetector:
                     (proc_id,),
                 )
                 if len(cal) >= 3:
-                    deltas = [
-                        (c["predicted_confidence"] or 0.5) - c["actual_outcome"]
-                        for c in cal
-                    ]
+                    deltas = [(c["predicted_confidence"] or 0.5) - c["actual_outcome"] for c in cal]
                     n = len(deltas)
                     mean = sum(deltas) / n
                     var = sum((d - mean) ** 2 for d in deltas) / n
@@ -828,25 +828,17 @@ class CuriosityEngine(CognitiveProcess):
             ("episodes", "intrinsic_reward", "REAL"),
         ]
         for table, col, col_type in aux_episodes:
-            try:
+            with contextlib.suppress(Exception):
                 self.db.conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {col_type}")
-            except Exception:
-                pass  # column already exists
         # Add execution_count to procedures if missing
-        try:
+        with contextlib.suppress(Exception):
             self.db.conn.execute(
                 "ALTER TABLE procedures ADD COLUMN execution_count INTEGER NOT NULL DEFAULT 0"
             )
-        except Exception:
-            pass
         # Add gap_type and target_id to learning_goals for curiosity tracking
         for col, col_type in [("gap_type", "TEXT"), ("target_id", "TEXT")]:
-            try:
-                self.db.conn.execute(
-                    f"ALTER TABLE learning_goals ADD COLUMN {col} {col_type}"
-                )
-            except Exception:
-                pass
+            with contextlib.suppress(Exception):
+                self.db.conn.execute(f"ALTER TABLE learning_goals ADD COLUMN {col} {col_type}")
         self.db.commit()
 
     # ── Required overrides ──────────────────────────────────────
@@ -1021,7 +1013,7 @@ class CuriosityEngine(CognitiveProcess):
         active_goals = self.db.fetchone(
             "SELECT COUNT(*) as cnt FROM learning_goals WHERE status = 'active'",
         )
-        has_active_goals = active_goals and active_goals["cnt"] > 0 if active_goals else False
+        active_goals and active_goals["cnt"] > 0 if active_goals else False
 
         # Check if it's been a while since last run
         last_run = self.db.fetchone(
@@ -1141,15 +1133,18 @@ class CuriosityEngine(CognitiveProcess):
 
         # 1. Record in intrinsic_reward_log
         reward_id = _new_id()
-        self.db.insert("intrinsic_reward_log", {
-            "id": reward_id,
-            "source_type": source_type,
-            "source_id": source_id,
-            "reward_value": reward_value,
-            "metadata": metadata or {},
-            "trigger_episode_id": trigger_episode_id,
-            "timestamp": _now_iso(),
-        })
+        self.db.insert(
+            "intrinsic_reward_log",
+            {
+                "id": reward_id,
+                "source_type": source_type,
+                "source_id": source_id,
+                "reward_value": reward_value,
+                "metadata": metadata or {},
+                "trigger_episode_id": trigger_episode_id,
+                "timestamp": _now_iso(),
+            },
+        )
         result["log_id"] = reward_id
 
         # 2. Procedure-related: TD update (confidence += α * (reward - confidence))
@@ -1159,10 +1154,14 @@ class CuriosityEngine(CognitiveProcess):
                 old_conf = proc["confidence"] or 0.5
                 td_error = reward_value - old_conf
                 new_conf = _clamp(old_conf + ALPHA_IRL * td_error)
-                self.db.update("procedures", source_id, {
-                    "confidence": new_conf,
-                    "updated_at": _now_iso(),
-                })
+                self.db.update(
+                    "procedures",
+                    source_id,
+                    {
+                        "confidence": new_conf,
+                        "updated_at": _now_iso(),
+                    },
+                )
                 result["old_confidence"] = old_conf
                 result["new_confidence"] = new_conf
                 result["td_error"] = td_error
@@ -1181,9 +1180,13 @@ class CuriosityEngine(CognitiveProcess):
             )
             if goal:
                 new_priority = _clamp(goal["priority"] + 0.05)
-                self.db.update("learning_goals", source_id, {
-                    "priority": new_priority,
-                })
+                self.db.update(
+                    "learning_goals",
+                    source_id,
+                    {
+                        "priority": new_priority,
+                    },
+                )
                 result["old_priority"] = goal["priority"]
                 result["new_priority"] = new_priority
                 result["applied"] = True
@@ -1262,12 +1265,14 @@ class CuriosityEngine(CognitiveProcess):
                             trigger_episode_id=episode_id,
                         )
                     self.db.update("learning_goals", goal["id"], updates)
-                    results["rewards"].append({
-                        "source_type": "learning_goal",
-                        "source_id": goal["id"],
-                        "applied": True,
-                        "updated_status": updates.get("status"),
-                    })
+                    results["rewards"].append(
+                        {
+                            "source_type": "learning_goal",
+                            "source_id": goal["id"],
+                            "applied": True,
+                            "updated_status": updates.get("status"),
+                        }
+                    )
 
             elif signal_type == "new_domain":
                 reward = self.apply_intrinsic_reward(
@@ -1306,7 +1311,7 @@ class CuriosityEngine(CognitiveProcess):
 
     def _apply_staleness_to_topics(self, topics: list[CuriosityTopic]) -> list[CuriosityTopic]:
         """Apply FreshPER staleness decay based on gap age."""
-        now = time.time()
+        time.time()
         for topic in topics:
             # Check when this gap was last updated in curiosity_scores
             row = self.db.fetchone(
@@ -1318,17 +1323,14 @@ class CuriosityEngine(CognitiveProcess):
                 updated_str = row["updated_at"] or topic.created_at
                 try:
                     from datetime import datetime
-                    updated_dt = datetime.strptime(
-                        updated_str.split(".")[0], "%Y-%m-%dT%H:%M:%S"
-                    )
+
+                    updated_dt = datetime.strptime(updated_str.split(".")[0], "%Y-%m-%dT%H:%M:%S")
                     age_days = (datetime.utcnow() - updated_dt).days
                     topic.curiosity_score = apply_staleness_decay(
                         topic.curiosity_score, float(age_days)
                     )
                     topic.exploration_attempts = row["exploration_attempts"] or 0
-                    fatigue = math.exp(
-                        -topic.exploration_attempts / FATIGUE_HALFLIFE_ATTEMPTS
-                    )
+                    fatigue = math.exp(-topic.exploration_attempts / FATIGUE_HALFLIFE_ATTEMPTS)
                     topic.curiosity_score *= fatigue
                 except (ValueError, TypeError):
                     pass
@@ -1396,9 +1398,8 @@ class CuriosityEngine(CognitiveProcess):
         # Recency bonus: +0.10 if gap created within last 24h
         try:
             from datetime import datetime
-            created_dt = datetime.strptime(
-                topic.created_at.split(".")[0], "%Y-%m-%dT%H:%M:%S"
-            )
+
+            created_dt = datetime.strptime(topic.created_at.split(".")[0], "%Y-%m-%dT%H:%M:%S")
             age_hours = (datetime.utcnow() - created_dt).total_seconds() / 3600
             if age_hours < 24:
                 priority += 0.10
@@ -1420,9 +1421,7 @@ class CuriosityEngine(CognitiveProcess):
         now = datetime.utcnow()
 
         # Get active goals
-        goals = self.db.fetchall(
-            "SELECT * FROM learning_goals WHERE status = 'active'"
-        )
+        goals = self.db.fetchall("SELECT * FROM learning_goals WHERE status = 'active'")
 
         for goal in goals:
             goal_id = goal["id"]
@@ -1449,9 +1448,7 @@ class CuriosityEngine(CognitiveProcess):
             created_str = goal.get("created_at", "")
             if created_str:
                 try:
-                    created_dt = datetime.strptime(
-                        created_str.split(".")[0], "%Y-%m-%dT%H:%M:%S"
-                    )
+                    created_dt = datetime.strptime(created_str.split(".")[0], "%Y-%m-%dT%H:%M:%S")
                     age_days = (now - created_dt).days
                     if age_days >= GOAL_ABANDONMENT_DAYS:
                         updates["status"] = GoalStatus.ABANDONED.value
@@ -1475,21 +1472,22 @@ class CuriosityEngine(CognitiveProcess):
 
         cutoff = (datetime.utcnow() - timedelta(hours=hours)).isoformat()
         row = self.db.fetchone(
-            "SELECT COUNT(*) as cnt FROM episodes "
-            "WHERE is_exploration = 1 AND timestamp >= ?",
+            "SELECT COUNT(*) as cnt FROM episodes WHERE is_exploration = 1 AND timestamp >= ?",
             (cutoff,),
         )
         return row["cnt"] if row else 0
 
     def _record_exploration(self, topic: CuriosityTopic) -> None:
         """Record that an exploration was performed."""
-        self._exploration_log.append({
-            "gap_type": topic.gap_type,
-            "target_id": topic.target_id,
-            "target_name": topic.target_name,
-            "curiosity_score": topic.curiosity_score,
-            "timestamp": _now_iso(),
-        })
+        self._exploration_log.append(
+            {
+                "gap_type": topic.gap_type,
+                "target_id": topic.target_id,
+                "target_name": topic.target_name,
+                "curiosity_score": topic.curiosity_score,
+                "timestamp": _now_iso(),
+            }
+        )
 
     def _increment_exploration_attempt(self, topic: CuriosityTopic) -> None:
         """Increment exploration_attempts for a topic in curiosity_scores."""
@@ -1500,12 +1498,16 @@ class CuriosityEngine(CognitiveProcess):
         )
         if existing:
             attempts = (existing["exploration_attempts"] or 0) + 1
-            self.db.update("curiosity_scores", existing["id"], {
-                "exploration_attempts": attempts,
-                "last_explored_at": _now_iso(),
-                "fatigue_factor": math.exp(-attempts / FATIGUE_HALFLIFE_ATTEMPTS),
-                "updated_at": _now_iso(),
-            })
+            self.db.update(
+                "curiosity_scores",
+                existing["id"],
+                {
+                    "exploration_attempts": attempts,
+                    "last_explored_at": _now_iso(),
+                    "fatigue_factor": math.exp(-attempts / FATIGUE_HALFLIFE_ATTEMPTS),
+                    "updated_at": _now_iso(),
+                },
+            )
 
     def _load_curiosity_topics(
         self,
@@ -1525,25 +1527,28 @@ class CuriosityEngine(CognitiveProcess):
             meta = r.get("metadata", {})
             if isinstance(meta, str):
                 import json
+
                 try:
                     meta = json.loads(meta)
                 except (json.JSONDecodeError, TypeError):
                     meta = {}
-            result.append(CuriosityTopic(
-                gap_type=r["gap_type"],
-                target_id=r["target_id"],
-                target_name=r.get("target_name", ""),
-                domain=r.get("domain"),
-                raw_score=r.get("raw_score", 0.0),
-                novelty_score=r.get("novelty_score", 0.0),
-                uncertainty_score=r.get("uncertainty_score", 0.0),
-                infogain_potential=r.get("infogain_potential", 0.0),
-                curiosity_score=r.get("curiosity_score", 0.0),
-                exploration_attempts=r.get("exploration_attempts", 0),
-                fatigue_factor=r.get("fatigue_factor", 1.0),
-                metadata=meta,
-                created_at=r.get("created_at", _now_iso()),
-            ))
+            result.append(
+                CuriosityTopic(
+                    gap_type=r["gap_type"],
+                    target_id=r["target_id"],
+                    target_name=r.get("target_name", ""),
+                    domain=r.get("domain"),
+                    raw_score=r.get("raw_score", 0.0),
+                    novelty_score=r.get("novelty_score", 0.0),
+                    uncertainty_score=r.get("uncertainty_score", 0.0),
+                    infogain_potential=r.get("infogain_potential", 0.0),
+                    curiosity_score=r.get("curiosity_score", 0.0),
+                    exploration_attempts=r.get("exploration_attempts", 0),
+                    fatigue_factor=r.get("fatigue_factor", 1.0),
+                    metadata=meta,
+                    created_at=r.get("created_at", _now_iso()),
+                )
+            )
         return result
 
     def get_curiosity_state(
@@ -1563,9 +1568,7 @@ class CuriosityEngine(CognitiveProcess):
             params.append(gap_type)
         where = " AND ".join(conditions)
         rows = self.db.fetchall(
-            f"SELECT * FROM curiosity_scores "
-            f"WHERE {where} "
-            f"ORDER BY curiosity_score DESC LIMIT ?",
+            f"SELECT * FROM curiosity_scores WHERE {where} ORDER BY curiosity_score DESC LIMIT ?",
             tuple(params + [limit]),
         )
         return {

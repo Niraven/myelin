@@ -174,8 +174,7 @@ class PrioritizedReplay(CognitiveProcess):
     def _compute_priorities(self) -> list[dict[str, Any]]:
         """Score all eligible episodes and update priority in DB."""
         episodes = self.db.fetchall(
-            "SELECT * FROM episodes "
-            "WHERE replay_count < ? OR replay_count IS NULL",
+            "SELECT * FROM episodes WHERE replay_count < ? OR replay_count IS NULL",
             (MAX_REPLAY_COUNT,),
         )
         scored: list[dict[str, Any]] = []

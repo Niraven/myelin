@@ -252,13 +252,17 @@ class Database:
         where: str | None = None,
         where_params: tuple[Any, ...] = (),
     ) -> list[dict[str, Any]]:
-        fts_results = self.fts_search(table, fts_table, text_query, limit=limit * 2, where=where, where_params=where_params)
+        fts_results = self.fts_search(
+            table, fts_table, text_query, limit=limit * 2, where=where, where_params=where_params
+        )
 
         if not query_vec or not self._vec_available:
             return fts_results[:limit]
 
         fts_ids = {r["id"]: i for i, r in enumerate(fts_results)}
-        vec_results = self.vec_search(table, embedding_col, query_vec, limit=limit * 2, where=where, where_params=where_params)
+        vec_results = self.vec_search(
+            table, embedding_col, query_vec, limit=limit * 2, where=where, where_params=where_params
+        )
         vec_ids = {r["id"]: i for i, r in enumerate(vec_results)}
 
         all_ids = set(fts_ids.keys()) | set(vec_ids.keys())

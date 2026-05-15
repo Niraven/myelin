@@ -135,9 +135,7 @@ class TestAgentProfilerLearning:
         assert "python" in profile["tools"]
 
     def test_register_and_update(self, profiler):
-        profiler.register(
-            AgentProfile(agent_id="agent_a", tools=["git"], model_family="claude")
-        )
+        profiler.register(AgentProfile(agent_id="agent_a", tools=["git"], model_family="claude"))
         profiler.register(
             AgentProfile(agent_id="agent_a", tools=["git", "docker"], model_family="claude")
         )

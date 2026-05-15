@@ -8,6 +8,8 @@ SCHEMA_VERSION 4 adds:
 - Schema learning: abstract behavioral patterns from semantic clusters
 """
 
+from contextlib import suppress
+
 SCHEMA_VERSION = 4
 
 SCHEMA_SQL = """
@@ -585,13 +587,87 @@ CREATE INDEX IF NOT EXISTS idx_tool_usage_count ON tool_usage(usage_count DESC);
 """
 
 
+MIGRATION_COLUMNS = {
+    "episodes": [
+        ("importance_score", "REAL NOT NULL DEFAULT 0.5"),
+        ("td_error", "REAL"),
+        ("surprise_score", "REAL"),
+        ("priority_score", "REAL DEFAULT 0.5"),
+        ("replay_count", "INTEGER DEFAULT 0"),
+        ("labile_until", "TEXT"),
+        ("procedure_id", "TEXT"),
+        ("is_exploration", "INTEGER NOT NULL DEFAULT 0"),
+        ("intrinsic_reward", "REAL"),
+    ],
+    "semantic_nodes": [
+        ("labile_until", "TEXT"),
+        ("prediction_error", "REAL"),
+        ("last_pe_raw", "REAL"),
+        ("last_update_mode", "TEXT"),
+    ],
+    "procedures": [
+        ("prediction_error", "REAL"),
+        ("surprise_score", "REAL"),
+        ("total_pe_sum", "REAL DEFAULT 0.0"),
+        ("pe_count", "INTEGER DEFAULT 0"),
+        ("execution_count", "INTEGER NOT NULL DEFAULT 0"),
+    ],
+    "learning_goals": [
+        ("gap_type", "TEXT"),
+        ("target_id", "TEXT"),
+    ],
+}
+
+
+FTS_TABLES = ("entities_fts", "episodes_fts", "semantic_fts", "procedures_fts")
+
+
+def _table_exists(conn, table: str) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type IN ('table', 'view') AND name = ?",
+        (table,),
+    ).fetchone()
+    return row is not None
+
+
+def _column_names(conn, table: str) -> set[str]:
+    return {row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+
+
+def _migrate_existing_columns(conn) -> None:
+    """Add V4 columns to existing V3 databases before indexes are created."""
+    for table, columns in MIGRATION_COLUMNS.items():
+        if not _table_exists(conn, table):
+            continue
+        existing = _column_names(conn, table)
+        for name, definition in columns:
+            if name not in existing:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {definition}")
+
+
+def _rebuild_fts(conn) -> None:
+    """Populate external-content FTS tables for rows created before triggers existed."""
+    for table in FTS_TABLES:
+        if _table_exists(conn, table):
+            with suppress(Exception):
+                conn.execute(f"INSERT INTO {table}({table}) VALUES('rebuild')")
+
+
 def init_db(conn) -> None:
     """Initialize the database schema.
-    
+
     Creates all tables, indexes, FTS virtual tables, and triggers.
-    Safe to call multiple times (CREATE IF NOT EXISTS).
+    Safe to call multiple times and upgrades V3 databases in place.
     """
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA foreign_keys=ON")
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+    )
+    _migrate_existing_columns(conn)
     conn.executescript(SCHEMA_SQL)
+    _migrate_existing_columns(conn)
+    _rebuild_fts(conn)
     conn.execute(
         "INSERT OR REPLACE INTO schema_meta (key, value) VALUES ('version', ?)",
         (str(SCHEMA_VERSION),),

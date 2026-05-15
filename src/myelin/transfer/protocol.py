@@ -54,7 +54,7 @@ class TransferProtocol:
         if not proc:
             return {"success": False, "error": "Procedure not found"}
 
-        source_profile = self.profiler.get(source_agent)
+        self.profiler.get(source_agent)
         target_profile = self.profiler.get(target_agent)
 
         similarity = self.profiler.compute_similarity(source_agent, target_agent)
@@ -68,14 +68,12 @@ class TransferProtocol:
         normalized_steps = [_normalize_step(step) for step in steps]
 
         # Capability analysis
-        required_tools = self.adaptation_engine.analyze_requirements(
-            {"steps": normalized_steps}
-        )
+        required_tools = self.adaptation_engine.analyze_requirements({"steps": normalized_steps})
 
         if not target_profile:
             adapted_steps = normalized_steps
             adaptation_notes = ["No target profile available, using original steps"]
-            adaptation_results = []
+            adaptation_results: list[Any] = []
         else:
             target_capabilities = self.profiler.get_toolset(target_agent, min_usage=1)
             target_tool_names = [c.tool_name for c in target_capabilities]
@@ -86,9 +84,7 @@ class TransferProtocol:
                 adaptation_results = []
             else:
                 adapted_steps, adaptation_results, adaptation_notes = (
-                    self.adaptation_engine.adapt_procedure(
-                        normalized_steps, target_tool_names
-                    )
+                    self.adaptation_engine.adapt_procedure(normalized_steps, target_tool_names)
                 )
 
         # Compute adaptation summary
@@ -147,7 +143,7 @@ class TransferProtocol:
         analysis = package.get("capability_analysis", {})
         changed = analysis.get("steps_changed", 0)
         flagged = analysis.get("steps_flagged", 0)
-        total = changed + flagged + analysis.get("steps_unchanged", len(steps))
+        changed + flagged + analysis.get("steps_unchanged", len(steps))
 
         base_confidence = package.get("transfer_confidence", 0.3)
 

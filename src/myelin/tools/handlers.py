@@ -225,17 +225,21 @@ class ToolHandlers:
             domain=episode.domain,
         )
 
-        self.profiler.learn_from_episode({
-            "agent_id": episode.agent_id,
-            "action": episode.action,
-            "content_text": episode.content_text,
-        })
+        self.profiler.learn_from_episode(
+            {
+                "agent_id": episode.agent_id,
+                "action": episode.action,
+                "content_text": episode.content_text,
+            }
+        )
 
-        self.user_profiler.learn_from_episode({
-            "agent_id": episode.agent_id,
-            "action": episode.action,
-            "content_text": episode.content_text,
-        })
+        self.user_profiler.learn_from_episode(
+            {
+                "agent_id": episode.agent_id,
+                "action": episode.action,
+                "content_text": episode.content_text,
+            }
+        )
 
         if episode.domain:
             self.confidence_map.update_domain(episode.domain, episode_delta=1)
@@ -898,20 +902,20 @@ class ToolHandlers:
         output_format = format.lower()
 
         if output_format == "mermaid":
-            result = viz.export_mermaid(entity_name, depth)
+            mermaid_result = viz.export_mermaid(entity_name, depth)
             return {
                 "format": "mermaid",
-                "mermaid": result,
-                "markdown": f"```mermaid\n{result}```",
-                "node_count": sum(1 for _ in result.split("\n") if "-->" in _ or '["' in _),
+                "mermaid": mermaid_result,
+                "markdown": f"```mermaid\n{mermaid_result}```",
+                "node_count": sum(1 for _ in mermaid_result.split("\n") if "-->" in _ or '["' in _),
             }
         elif output_format in ("d3_json", "d3json", "d3"):
-            result = viz.export_d3_json(entity_name, depth)
+            graph_result = viz.export_d3_json(entity_name, depth)
             return {
                 "format": "d3_json",
-                "graph": result,
-                "node_count": len(result.get("nodes", [])),
-                "edge_count": len(result.get("links", [])),
+                "graph": graph_result,
+                "node_count": len(graph_result.get("nodes", [])),
+                "edge_count": len(graph_result.get("links", [])),
             }
         else:
             return {
@@ -941,7 +945,7 @@ class ToolHandlers:
 
     async def profile(self, agent_id: str) -> dict[str, Any]:
         """Return the learned user profile for an agent.
-        
+
         Returns static (stable preferences) and dynamic (recent context)
         profile sections with confidence scores and category breakdown.
         """

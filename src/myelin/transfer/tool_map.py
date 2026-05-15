@@ -91,7 +91,12 @@ def find_alternative_tool(required_tool: str, target_tools: set[str]) -> str | N
 
     # 5. Prefix/substring match: required is a prefix of target tool
     for t in target_lower:
-        if t.startswith(req + " ") or req.startswith(t + " ") or (" " + req) in t or (" " + t) in req:
+        if (
+            t.startswith(req + " ")
+            or req.startswith(t + " ")
+            or (" " + req) in t
+            or (" " + t) in req
+        ):
             return t
 
     return None

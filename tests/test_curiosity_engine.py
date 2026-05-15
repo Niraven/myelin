@@ -16,6 +16,14 @@ from uuid import uuid4
 import pytest
 
 from myelin.cognitive.curiosity_engine import (
+    EPSILON_END,
+    EPSILON_START,
+    GAP_COLD_START,
+    GAP_DOMAIN_UNCERT,
+    GAP_ENTITY,
+    GAP_PROCEDURE,
+    GAP_RELATIONSHIP,
+    MAX_EXPLORATIONS_PER_HOUR,
     CuriosityEngine,
     CuriosityGapDetector,
     apply_fatigue,
@@ -36,24 +44,10 @@ from myelin.cognitive.curiosity_engine import (
     compute_uncertainty_procedure,
     compute_uncertainty_relationship,
     softmax_sample,
-    GAP_ENTITY,
-    GAP_DOMAIN_LOW,
-    GAP_DOMAIN_UNCERT,
-    GAP_PROCEDURE,
-    GAP_RELATIONSHIP,
-    GAP_COLD_START,
-    EPSILON_START,
-    EPSILON_END,
-    MAX_EXPLORATIONS_PER_HOUR,
 )
 from myelin.core.models import (
     CuriosityTopic,
-    EntityType,
     GoalStatus,
-    ProcedureStatus,
-    ProcedureStep,
-    StepType,
-    ActionType,
     ProcessName,
 )
 
@@ -278,16 +272,19 @@ def detector(tmp_db):
 
 def _insert_entity(db, name="test-entity", mention_count=1, domain="test-domain"):
     eid = _new_id()
-    db.insert("entities", {
-        "id": eid,
-        "name": name,
-        "entity_type": "tool",
-        "canonical_name": name.lower(),
-        "mention_count": mention_count,
-        "domain": domain,
-        "source_episodes": json.dumps([]),
-        "access_times": json.dumps([]),
-    })
+    db.insert(
+        "entities",
+        {
+            "id": eid,
+            "name": name,
+            "entity_type": "tool",
+            "canonical_name": name.lower(),
+            "mention_count": mention_count,
+            "domain": domain,
+            "source_episodes": json.dumps([]),
+            "access_times": json.dumps([]),
+        },
+    )
     return eid
 
 
@@ -330,31 +327,35 @@ def _insert_confidence_map(
     db, domain="test-domain", confidence=0.5, ep_count=5, proc_count=2, trend="stable"
 ):
     cid = _new_id()
-    db.insert("confidence_map", {
-        "id": cid,
-        "domain": domain,
-        "confidence": confidence,
-        "episode_count": ep_count,
-        "procedure_count": proc_count,
-        "trend": trend,
-    })
+    db.insert(
+        "confidence_map",
+        {
+            "id": cid,
+            "domain": domain,
+            "confidence": confidence,
+            "episode_count": ep_count,
+            "procedure_count": proc_count,
+            "trend": trend,
+        },
+    )
     return cid
 
 
-def _insert_relationship(
-    db, source_id, target_id, strength=0.5, evidence_count=3, rel_type="uses"
-):
+def _insert_relationship(db, source_id, target_id, strength=0.5, evidence_count=3, rel_type="uses"):
     rid = _new_id()
-    db.insert("relationships", {
-        "id": rid,
-        "source_entity_id": source_id,
-        "target_entity_id": target_id,
-        "relation_type": rel_type,
-        "strength": strength,
-        "evidence_count": evidence_count,
-        "evidence_episodes": json.dumps([]),
-        "last_observed": time.strftime("%Y-%m-%dT%H:%M:%S"),
-    })
+    db.insert(
+        "relationships",
+        {
+            "id": rid,
+            "source_entity_id": source_id,
+            "target_entity_id": target_id,
+            "relation_type": rel_type,
+            "strength": strength,
+            "evidence_count": evidence_count,
+            "evidence_episodes": json.dumps([]),
+            "last_observed": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        },
+    )
     return rid
 
 
@@ -384,7 +385,7 @@ class TestEntityGapDetection:
 
     def test_entity_no_domain(self, detector, tmp_db):
         """Entity without domain should use fallback values."""
-        eid = _insert_entity(tmp_db, "nobody", mention_count=1, domain=None)
+        _insert_entity(tmp_db, "nobody", mention_count=1, domain=None)
         gaps = detector._detect_entity_gaps()
         assert any(g.target_name == "nobody" for g in gaps)
         for g in gaps:
@@ -394,19 +395,23 @@ class TestEntityGapDetection:
     def test_entity_with_zero_mentions_old(self, detector, tmp_db):
         """Zero-mention entity older than 30 days should be skipped."""
         from datetime import datetime, timedelta
+
         old_date = (datetime.utcnow() - timedelta(days=31)).isoformat()
         eid = _new_id()
-        tmp_db.insert("entities", {
-            "id": eid,
-            "name": "ancient",
-            "entity_type": "concept",
-            "canonical_name": "ancient",
-            "mention_count": 0,
-            "domain": "test",
-            "source_episodes": json.dumps([]),
-            "access_times": json.dumps([]),
-            "created_at": old_date,
-        })
+        tmp_db.insert(
+            "entities",
+            {
+                "id": eid,
+                "name": "ancient",
+                "entity_type": "concept",
+                "canonical_name": "ancient",
+                "mention_count": 0,
+                "domain": "test",
+                "source_episodes": json.dumps([]),
+                "access_times": json.dumps([]),
+                "created_at": old_date,
+            },
+        )
         gaps = detector._detect_entity_gaps()
         assert not any(g.target_name == "ancient" for g in gaps)
 
@@ -429,9 +434,7 @@ class TestDomainGapDetection:
 
     def test_skips_stable_nonprocedural(self, detector, tmp_db):
         """Domain that's stable + 0 proc + 20+ episodes should be skipped."""
-        _insert_confidence_map(
-            tmp_db, "chitchat", proc_count=0, ep_count=25, trend="stable"
-        )
+        _insert_confidence_map(tmp_db, "chitchat", proc_count=0, ep_count=25, trend="stable")
         gaps = detector._detect_domain_low_procedure_gaps()
         assert not any(g.target_name == "chitchat" for g in gaps)
 
@@ -477,9 +480,7 @@ class TestProcedureGapDetection:
     def test_skips_recently_executed(self, detector, tmp_db):
         """Procedure executed within 7 days should be skipped."""
         recent = (datetime.utcnow() - timedelta(days=1)).isoformat()
-        _insert_procedure(
-            tmp_db, "recent", confidence=0.4, exec_count=5, last_executed=recent
-        )
+        _insert_procedure(tmp_db, "recent", confidence=0.4, exec_count=5, last_executed=recent)
         gaps = detector._detect_untested_procedure_gaps()
         assert not any(g.target_name == "recent" for g in gaps)
 
@@ -566,22 +567,24 @@ class TestEngineExecute:
         """Existing goals get maintained (aged out, completed)."""
         # Create a stale goal
         from datetime import datetime, timedelta
+
         old_date = (datetime.utcnow() - timedelta(days=31)).isoformat()
         gid = _new_id()
-        tmp_db.insert("learning_goals", {
-            "id": gid,
-            "domain": "obsolete",
-            "goal": "Old goal that should be abandoned",
-            "priority": 0.05,
-            "status": "active",
-            "episodes_needed": 3,
-            "episodes_collected": 0,
-            "created_at": old_date,
-        })
-        await engine.execute()
-        abandoned = tmp_db.fetchone(
-            "SELECT * FROM learning_goals WHERE id = ?", (gid,)
+        tmp_db.insert(
+            "learning_goals",
+            {
+                "id": gid,
+                "domain": "obsolete",
+                "goal": "Old goal that should be abandoned",
+                "priority": 0.05,
+                "status": "active",
+                "episodes_needed": 3,
+                "episodes_collected": 0,
+                "created_at": old_date,
+            },
         )
+        await engine.execute()
+        abandoned = tmp_db.fetchone("SELECT * FROM learning_goals WHERE id = ?", (gid,))
         assert abandoned["status"] == GoalStatus.ABANDONED.value
 
     @pytest.mark.asyncio
@@ -596,7 +599,9 @@ class TestEngineExecute:
         _insert_procedure(tmp_db, "unstable-p2", domain="high-pe-domain", predicted=0.8, actual=0.2)
         _insert_confidence_map(tmp_db, "high-pe-domain", proc_count=2)
         # Procedure gap
-        _insert_procedure(tmp_db, "wobbly", domain="test-domain", confidence=0.3, exec_count=0, last_executed=None)
+        _insert_procedure(
+            tmp_db, "wobbly", domain="test-domain", confidence=0.3, exec_count=0, last_executed=None
+        )
         # Relationship gap
         e1 = _insert_entity(tmp_db, "src-entity")
         e2 = _insert_entity(tmp_db, "tgt-entity")
@@ -618,17 +623,20 @@ class TestEpsilonGreedy:
         """Exploration budget should prevent over-exploration."""
         # Inject exploration episodes to exceed budget
         for _ in range(MAX_EXPLORATIONS_PER_HOUR + 1):
-            tmp_db.insert("episodes", {
-                "id": _new_id(),
-                "agent_id": "test",
-                "session_id": "s1",
-                "action": "explore",
-                "action_type": "tool_call",
-                "content_text": "exploration",
-                "is_exploration": 1,
-                "timestamp": datetime.utcnow().isoformat(),
-                "access_times": json.dumps([]),
-            })
+            tmp_db.insert(
+                "episodes",
+                {
+                    "id": _new_id(),
+                    "agent_id": "test",
+                    "session_id": "s1",
+                    "action": "explore",
+                    "action_type": "tool_call",
+                    "content_text": "exploration",
+                    "is_exploration": 1,
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "access_times": json.dumps([]),
+                },
+            )
         result = await engine.execute_exploration_cycle()
         assert result["explored"] is False
         assert result.get("reason") == "budget_exceeded"
@@ -679,12 +687,15 @@ class TestIntrinsicMotivation:
         # Create an entity that was just discovered (mention_count=1)
         eid = _insert_entity(tmp_db, "brand-new", mention_count=1)
         # Link it to the episode
-        tmp_db.insert("entity_mentions", {
-            "id": _new_id(),
-            "entity_id": eid,
-            "source_type": "episode",
-            "source_id": episode["id"],
-        })
+        tmp_db.insert(
+            "entity_mentions",
+            {
+                "id": _new_id(),
+                "entity_id": eid,
+                "source_type": "episode",
+                "source_id": episode["id"],
+            },
+        )
         signals = engine.compute_learning_signal(episode)
         assert "new_entity_discovered" in signals
 
@@ -705,16 +716,19 @@ class TestIntrinsicMotivation:
     def test_apply_intrinsic_reward_learning_goal(self, engine, tmp_db):
         """Intrinsic reward boosts learning goal priority."""
         gid = _new_id()
-        tmp_db.insert("learning_goals", {
-            "id": gid,
-            "domain": "test",
-            "goal": "Learn X",
-            "priority": 0.5,
-            "status": "active",
-            "episodes_needed": 3,
-            "episodes_collected": 0,
-            "created_at": datetime.utcnow().isoformat(),
-        })
+        tmp_db.insert(
+            "learning_goals",
+            {
+                "id": gid,
+                "domain": "test",
+                "goal": "Learn X",
+                "priority": 0.5,
+                "status": "active",
+                "episodes_needed": 3,
+                "episodes_collected": 0,
+                "created_at": datetime.utcnow().isoformat(),
+            },
+        )
         result = engine.apply_intrinsic_reward(
             source_type="learning_goal",
             source_id=gid,
@@ -832,18 +846,22 @@ class TestGoalMaintenance:
     async def test_goal_aged_out(self, engine, tmp_db):
         """Goal older than 30 days gets abandoned."""
         from datetime import datetime, timedelta
+
         old_date = (datetime.utcnow() - timedelta(days=31)).isoformat()
         gid = _new_id()
-        tmp_db.insert("learning_goals", {
-            "id": gid,
-            "domain": "test",
-            "goal": "Old goal",
-            "priority": 0.5,
-            "status": "active",
-            "episodes_needed": 5,
-            "episodes_collected": 0,
-            "created_at": old_date,
-        })
+        tmp_db.insert(
+            "learning_goals",
+            {
+                "id": gid,
+                "domain": "test",
+                "goal": "Old goal",
+                "priority": 0.5,
+                "status": "active",
+                "episodes_needed": 5,
+                "episodes_collected": 0,
+                "created_at": old_date,
+            },
+        )
         engine._maintain_learning_goals()
         goal = tmp_db.fetchone("SELECT * FROM learning_goals WHERE id = ?", (gid,))
         assert goal["status"] == GoalStatus.ABANDONED.value
@@ -851,28 +869,34 @@ class TestGoalMaintenance:
     def test_goal_completed(self, engine, tmp_db):
         """Goal with collected >= needed gets achieved."""
         gid = _new_id()
-        tmp_db.insert("learning_goals", {
-            "id": gid,
-            "domain": "test",
-            "goal": "Complete goal",
-            "priority": 0.8,
-            "status": "active",
-            "episodes_needed": 3,
-            "episodes_collected": 0,
-            "created_at": datetime.utcnow().isoformat(),
-        })
+        tmp_db.insert(
+            "learning_goals",
+            {
+                "id": gid,
+                "domain": "test",
+                "goal": "Complete goal",
+                "priority": 0.8,
+                "status": "active",
+                "episodes_needed": 3,
+                "episodes_collected": 0,
+                "created_at": datetime.utcnow().isoformat(),
+            },
+        )
         # Add enough episodes to exceed needed
         for _ in range(5):
-            tmp_db.insert("episodes", {
-                "id": _new_id(),
-                "agent_id": "test",
-                "session_id": "s1",
-                "action": "work",
-                "action_type": "tool_call",
-                "content_text": "doing work",
-                "domain": "test",
-                "access_times": json.dumps([]),
-            })
+            tmp_db.insert(
+                "episodes",
+                {
+                    "id": _new_id(),
+                    "agent_id": "test",
+                    "session_id": "s1",
+                    "action": "work",
+                    "action_type": "tool_call",
+                    "content_text": "doing work",
+                    "domain": "test",
+                    "access_times": json.dumps([]),
+                },
+            )
         engine._maintain_learning_goals()
         goal = tmp_db.fetchone("SELECT * FROM learning_goals WHERE id = ?", (gid,))
         assert goal["status"] == GoalStatus.ACHIEVED.value
@@ -880,16 +904,19 @@ class TestGoalMaintenance:
     def test_low_priority_goal_abandoned(self, engine, tmp_db):
         """Goal with priority < 0.1 gets abandoned."""
         gid = _new_id()
-        tmp_db.insert("learning_goals", {
-            "id": gid,
-            "domain": "test",
-            "goal": "Low priority",
-            "priority": 0.05,
-            "status": "active",
-            "episodes_needed": 3,
-            "episodes_collected": 0,
-            "created_at": datetime.utcnow().isoformat(),
-        })
+        tmp_db.insert(
+            "learning_goals",
+            {
+                "id": gid,
+                "domain": "test",
+                "goal": "Low priority",
+                "priority": 0.05,
+                "status": "active",
+                "episodes_needed": 3,
+                "episodes_collected": 0,
+                "created_at": datetime.utcnow().isoformat(),
+            },
+        )
         engine._maintain_learning_goals()
         goal = tmp_db.fetchone("SELECT * FROM learning_goals WHERE id = ?", (gid,))
         assert goal["status"] == GoalStatus.ABANDONED.value

@@ -10,35 +10,85 @@ import json
 import re
 import time
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from ..core.database import Database
 
 CATEGORY_PATTERNS: dict[str, list[str]] = {
     "preference": [
-        "prefer", "like", "favorite", "rather", "better", "preferred",
-        "tend to", "usually", "typically", "always use", "always do",
-        "prefer not", "don't like", "avoid",
+        "prefer",
+        "like",
+        "favorite",
+        "rather",
+        "better",
+        "preferred",
+        "tend to",
+        "usually",
+        "typically",
+        "always use",
+        "always do",
+        "prefer not",
+        "don't like",
+        "avoid",
     ],
     "style": [
-        "style", "approach", "way of", "method", "philosophy",
-        "concise", "verbose", "detailed", "thorough", "minimal",
-        "writing", "format", "organized", "structure",
+        "style",
+        "approach",
+        "way of",
+        "method",
+        "philosophy",
+        "concise",
+        "verbose",
+        "detailed",
+        "thorough",
+        "minimal",
+        "writing",
+        "format",
+        "organized",
+        "structure",
     ],
     "priority": [
-        "priority", "important", "urgent", "critical", "blocker",
-        "need to", "must", "should focus", "goal", "aim",
-        "top of mind", "working on", "currently", "next",
+        "priority",
+        "important",
+        "urgent",
+        "critical",
+        "blocker",
+        "need to",
+        "must",
+        "should focus",
+        "goal",
+        "aim",
+        "top of mind",
+        "working on",
+        "currently",
+        "next",
     ],
     "skill": [
-        "good at", "expert", "experienced", "skill", "familiar",
-        "know how", "can handle", "comfortable", "proficient",
+        "good at",
+        "expert",
+        "experienced",
+        "skill",
+        "familiar",
+        "know how",
+        "can handle",
+        "comfortable",
+        "proficient",
     ],
     "fact": [
-        "used", "use", "work", "works", "working",
-        "project", "repo", "repository", "environment",
-        "setup", "config", "configured", "running",
+        "used",
+        "use",
+        "work",
+        "works",
+        "working",
+        "project",
+        "repo",
+        "repository",
+        "environment",
+        "setup",
+        "config",
+        "configured",
+        "running",
     ],
 }
 
@@ -73,7 +123,7 @@ class ProfileFact:
 
 class UserProfiler:
     """Learns user preferences, style, and priorities from episodes.
-    
+
     Maintains a split profile:
     - static_facts: High-confidence, stable traits that persist across sessions.
     - dynamic_context: Recent observations, current projects, temporary state.
@@ -86,7 +136,7 @@ class UserProfiler:
 
     def learn_from_episode(self, episode: dict) -> list[ProfileFact]:
         """Extract profile-worthy facts from an episode text.
-        
+
         Scans the action + content_text for signals about preferences,
         communication style, priorities, skills, and general facts.
         Returns list of newly created or updated ProfileFact objects.
@@ -112,7 +162,7 @@ class UserProfiler:
 
     def get_profile(self, agent_id: str) -> dict[str, Any]:
         """Return current profile as a structured dict.
-        
+
         Returns:
             {
                 "static_facts": [...high-confidence stable facts...],
@@ -133,9 +183,7 @@ class UserProfiler:
                 cat = f["category"]
                 categories[cat] = categories.get(cat, 0) + 1
                 key = f"{cat}_{is_static_label}"
-                confidence_summary[key] = max(
-                    confidence_summary.get(key, 0.0), f["confidence"]
-                )
+                confidence_summary[key] = max(confidence_summary.get(key, 0.0), f["confidence"])
 
         return {
             "agent_id": agent_id,
@@ -169,7 +217,7 @@ class UserProfiler:
 
     def _extract_facts(self, text: str, agent_id: str) -> list[dict[str, Any]]:
         """Extract candidate facts from text using pattern matching.
-        
+
         Returns list of {fact, category, confidence} dicts.
         """
         text_lower = text.lower()
@@ -188,11 +236,13 @@ class UserProfiler:
                             "fact": 0.4,
                         }.get(category, 0.5)
 
-                        found.append({
-                            "fact": fact.strip(),
-                            "category": category,
-                            "confidence": base_confidence,
-                        })
+                        found.append(
+                            {
+                                "fact": fact.strip(),
+                                "category": category,
+                                "confidence": base_confidence,
+                            }
+                        )
                         break  # One match per category per episode
 
         # Also extract tool/framework usage as skill facts
@@ -202,7 +252,7 @@ class UserProfiler:
 
     def _extract_sentence(self, text: str, pattern: str) -> str | None:
         """Extract the sentence containing the pattern match."""
-        sentences = re.split(r'(?<=[.!?])\s+', text)
+        sentences = re.split(r"(?<=[.!?])\s+", text)
         for sentence in sentences:
             if pattern in sentence.lower():
                 return sentence
@@ -213,13 +263,13 @@ class UserProfiler:
     ) -> None:
         """Extract tool/tech usage as skill facts."""
         tech_patterns = [
-            (r'\b(python|javascript|typescript|rust|go|golang|java|c\+\+|ruby)\b', "language"),
-            (r'\b(django|flask|fastapi|react|vue|angular|spring|rails)\b', "framework"),
-            (r'\b(postgresql|mysql|sqlite|mongodb|redis)\b', "database"),
-            (r'\b(docker|kubernetes|k8s|aws|gcp|azure)\b', "infra"),
-            (r'\b(git|github|gitlab|ci/cd|jenkins|github actions)\b', "devops"),
-            (r'\b(pytest|jest|mocha|unittest|playwright|cypress)\b', "testing"),
-            (r'\b(linux|ubuntu|debian|alpine|macos)\b', "os"),
+            (r"\b(python|javascript|typescript|rust|go|golang|java|c\+\+|ruby)\b", "language"),
+            (r"\b(django|flask|fastapi|react|vue|angular|spring|rails)\b", "framework"),
+            (r"\b(postgresql|mysql|sqlite|mongodb|redis)\b", "database"),
+            (r"\b(docker|kubernetes|k8s|aws|gcp|azure)\b", "infra"),
+            (r"\b(git|github|gitlab|ci/cd|jenkins|github actions)\b", "devops"),
+            (r"\b(pytest|jest|mocha|unittest|playwright|cypress)\b", "testing"),
+            (r"\b(linux|ubuntu|debian|alpine|macos)\b", "os"),
         ]
         for regex_str, tech_category in tech_patterns:
             matches = re.findall(regex_str, text_lower)
@@ -227,11 +277,13 @@ class UserProfiler:
                 fact_text = f"works with {match} ({tech_category})"
                 # Deduplicate
                 if not any(f["fact"].lower() == fact_text for f in found):
-                    found.append({
-                        "fact": fact_text,
-                        "category": "skill",
-                        "confidence": 0.5,
-                    })
+                    found.append(
+                        {
+                            "fact": fact_text,
+                            "category": "skill",
+                            "confidence": 0.5,
+                        }
+                    )
 
     # ── Database operations ────────────────────────────────────────
 
@@ -289,7 +341,7 @@ class UserProfiler:
 
     def _graduate_static_facts(self, agent_id: str) -> None:
         """Promote high-confidence dynamic facts to static.
-        
+
         Facts with confidence >= STATIC_CONFIDENCE_THRESHOLD are graduated
         to the static set, meaning they represent stable preferences or traits.
         """
@@ -352,9 +404,7 @@ class UserProfiler:
 
     def _get_profile_row(self, agent_id: str) -> dict[str, Any] | None:
         """Get the agent_profiles row for this agent."""
-        return self.db.fetchone(
-            "SELECT * FROM agent_profiles WHERE agent_id = ?", (agent_id,)
-        )
+        return self.db.fetchone("SELECT * FROM agent_profiles WHERE agent_id = ?", (agent_id,))
 
     def _update_static_facts_json(self, agent_id: str) -> None:
         """Sync the static_facts JSON column on agent_profiles from profile_facts table."""

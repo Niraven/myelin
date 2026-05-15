@@ -2,28 +2,23 @@
 
 from __future__ import annotations
 
-import json
-import time
 from datetime import datetime, timedelta
-from unittest.mock import patch
 
 import pytest
 
 from myelin.cognitive.reconsolidator import (
-    LABILITY_WINDOW_HOURS,
     MAX_LABILE_MEMORIES,
     PE_CONFIRMED,
-    PE_SELECTIVE_EDIT,
     PE_INTEGRATION,
+    PE_SELECTIVE_EDIT,
     ReconsolidationEngine,
     _jaccard_distance,
 )
 from myelin.core.database import Database
 from myelin.core.models import ActionType, Episode, NodeType, SemanticNode, SourceType
 from myelin.memory.episodic import EpisodicMemory
-from myelin.memory.semantic import SemanticMemory
 from myelin.memory.procedural import ProceduralMemory
-
+from myelin.memory.semantic import SemanticMemory
 
 # ── Fixtures ───────────────────────────────────────────────────
 
@@ -112,7 +107,9 @@ class TestLabilityWindow:
         assert row["labile_until"] is not None
         assert row["labile_until"] == labile_until
 
-    def test_open_lability_window_semantic(self, engine: ReconsolidationEngine, seeded_semantic: str):
+    def test_open_lability_window_semantic(
+        self, engine: ReconsolidationEngine, seeded_semantic: str
+    ):
         labile_until = engine.open_lability_window("semantic_node", seeded_semantic)
         assert labile_until is not None
 
@@ -185,7 +182,9 @@ class TestLabilityWindow:
         assert entry["memory_id"] == seeded_episode
         assert entry["labile_until"] is not None
 
-    def test_get_labile_memories_filtered(self, engine: ReconsolidationEngine, seeded_episode: str, seeded_semantic: str):
+    def test_get_labile_memories_filtered(
+        self, engine: ReconsolidationEngine, seeded_episode: str, seeded_semantic: str
+    ):
         engine.open_lability_window("episode", seeded_episode)
         engine.open_lability_window("semantic_node", seeded_semantic)
 
@@ -209,44 +208,62 @@ class TestLabilityWindow:
 class TestPEComputation:
     def test_identical_content(self, engine: ReconsolidationEngine):
         pe_raw, pe_eff = engine.compute_pe(
-            "hello world", "hello world",
+            "hello world",
+            "hello world",
         )
         assert pe_raw == 0.0
         assert pe_eff == 0.0
 
     def test_different_content(self, engine: ReconsolidationEngine):
         pe_raw, pe_eff = engine.compute_pe(
-            "hello world", "foo bar baz",
+            "hello world",
+            "foo bar baz",
         )
         assert pe_raw == 1.0
         assert pe_eff > 0.0
 
     def test_contradiction_bonus_error(self, engine: ReconsolidationEngine):
         base_text = "deploy service to production environment"
-        pe_no_bonus, _ = engine.compute_pe(base_text, "deploy service to staging environment", action_type="tool_call")
-        pe_with_bonus, _ = engine.compute_pe(base_text, "deploy service to staging environment", action_type="error")
+        pe_no_bonus, _ = engine.compute_pe(
+            base_text, "deploy service to staging environment", action_type="tool_call"
+        )
+        pe_with_bonus, _ = engine.compute_pe(
+            base_text, "deploy service to staging environment", action_type="error"
+        )
         assert pe_with_bonus > pe_no_bonus
         assert pytest.approx(pe_with_bonus, abs=0.21) == min(1.0, pe_no_bonus + 0.2)
 
     def test_contradiction_bonus_failure(self, engine: ReconsolidationEngine):
         base_text = "deploy service to production environment"
-        pe_no_bonus, _ = engine.compute_pe(base_text, "deploy service to staging environment", success=True)
-        pe_with_bonus, _ = engine.compute_pe(base_text, "deploy service to staging environment", success=False)
+        pe_no_bonus, _ = engine.compute_pe(
+            base_text, "deploy service to staging environment", success=True
+        )
+        pe_with_bonus, _ = engine.compute_pe(
+            base_text, "deploy service to staging environment", success=False
+        )
         assert pe_with_bonus > pe_no_bonus
         assert pytest.approx(pe_with_bonus, abs=0.21) == min(1.0, pe_no_bonus + 0.2)
 
     def test_neuromodulation_high_ne(self, engine: ReconsolidationEngine):
         """Higher NE increases PE_eff."""
         base_text = "deploy service to production environment"
-        _, pe_low = engine.compute_pe(base_text, "deploy service to staging environment", ne=0.5, ht5=0.5)
-        _, pe_high = engine.compute_pe(base_text, "deploy service to staging environment", ne=2.0, ht5=0.5)
+        _, pe_low = engine.compute_pe(
+            base_text, "deploy service to staging environment", ne=0.5, ht5=0.5
+        )
+        _, pe_high = engine.compute_pe(
+            base_text, "deploy service to staging environment", ne=2.0, ht5=0.5
+        )
         assert pe_high > pe_low
 
     def test_neuromodulation_high_5ht(self, engine: ReconsolidationEngine):
         """Higher 5HT decreases PE_eff."""
         base_text = "deploy service to production environment"
-        _, pe_low = engine.compute_pe(base_text, "deploy service to staging environment", ne=1.0, ht5=0.1)
-        _, pe_high = engine.compute_pe(base_text, "deploy service to staging environment", ne=1.0, ht5=1.0)
+        _, pe_low = engine.compute_pe(
+            base_text, "deploy service to staging environment", ne=1.0, ht5=0.1
+        )
+        _, pe_high = engine.compute_pe(
+            base_text, "deploy service to staging environment", ne=1.0, ht5=1.0
+        )
         assert pe_low > pe_high
 
     def test_pe_eff_bounded(self, engine: ReconsolidationEngine):
@@ -401,7 +418,9 @@ class TestContradictionPenalty:
 
 
 class TestReconsolidationPipeline:
-    def test_process_new_evidence_confirmed(self, engine: ReconsolidationEngine, seeded_episode: str):
+    def test_process_new_evidence_confirmed(
+        self, engine: ReconsolidationEngine, seeded_episode: str
+    ):
         """Near-identical content should produce 'confirmed' mode."""
         # Include the action text since episodes combine content_text + action
         result = engine.process_new_evidence(
@@ -427,7 +446,9 @@ class TestReconsolidationPipeline:
         assert result["pe_raw"] > 0.5
         assert result["log_id"] is not None
 
-    def test_process_new_evidence_semantic_contradiction(self, engine: ReconsolidationEngine, seeded_semantic: str):
+    def test_process_new_evidence_semantic_contradiction(
+        self, engine: ReconsolidationEngine, seeded_semantic: str
+    ):
         """Test that contradiction penalty applies correctly."""
         result = engine.process_new_evidence(
             memory_type="semantic_node",
@@ -479,13 +500,17 @@ class TestReconsolidationPipeline:
         assert log["snapshot_before"] is not None
         assert log["agent_id"] == "test-agent"
 
-    def test_snapshot_captures_before_state(self, engine: ReconsolidationEngine, seeded_episode: str):
+    def test_snapshot_captures_before_state(
+        self, engine: ReconsolidationEngine, seeded_episode: str
+    ):
         ep_before = engine.episodic.get(seeded_episode)
         snapshot = engine._snapshot("episode", seeded_episode)
         assert snapshot is not None
         assert snapshot["content_text"] == ep_before["content_text"]
 
-    def test_semantic_confidence_update_on_confirmed(self, engine: ReconsolidationEngine, seeded_semantic: str):
+    def test_semantic_confidence_update_on_confirmed(
+        self, engine: ReconsolidationEngine, seeded_semantic: str
+    ):
         conf_before = engine.semantic.get(seeded_semantic)["confidence"]
         engine.process_new_evidence(
             memory_type="semantic_node",
@@ -496,14 +521,20 @@ class TestReconsolidationPipeline:
         # Confirmed mode boosts confidence
         assert conf_after >= conf_before
 
-    def test_stability_protector_blocks_update(self, engine: ReconsolidationEngine, seeded_episode: str):
+    def test_stability_protector_blocks_update(
+        self, engine: ReconsolidationEngine, seeded_episode: str
+    ):
         """A very stable memory with low PE should be skipped."""
         # Make the memory look very stable
         old_date = (datetime.utcnow() - timedelta(days=60)).isoformat()
-        engine.db.update("episodes", seeded_episode, {
-            "access_count": 50,
-            "created_at": old_date,
-        })
+        engine.db.update(
+            "episodes",
+            seeded_episode,
+            {
+                "access_count": 50,
+                "created_at": old_date,
+            },
+        )
 
         result = engine.process_new_evidence(
             memory_type="episode",
@@ -521,7 +552,9 @@ class TestReconsolidationPipeline:
 
 class TestMCPToolHandler:
     @pytest.mark.asyncio
-    async def test_myelin_reconsolidate_success(self, engine: ReconsolidationEngine, seeded_episode: str):
+    async def test_myelin_reconsolidate_success(
+        self, engine: ReconsolidationEngine, seeded_episode: str
+    ):
         result = await engine.myelin_reconsolidate(
             memory_id=seeded_episode,
             memory_type="episode",
@@ -562,7 +595,9 @@ class TestMCPToolHandler:
         assert "not found" in result["result"]["message"]
 
     @pytest.mark.asyncio
-    async def test_myelin_reconsolidate_semantic(self, engine: ReconsolidationEngine, seeded_semantic: str):
+    async def test_myelin_reconsolidate_semantic(
+        self, engine: ReconsolidationEngine, seeded_semantic: str
+    ):
         result = await engine.myelin_reconsolidate(
             memory_id=seeded_semantic,
             memory_type="semantic_node",
@@ -594,7 +629,9 @@ class TestMCPToolHandler:
 
 
 class TestIntegration:
-    def test_full_cycle_lability_to_reconsolidation(self, engine: ReconsolidationEngine, seeded_episode: str):
+    def test_full_cycle_lability_to_reconsolidation(
+        self, engine: ReconsolidationEngine, seeded_episode: str
+    ):
         """Test the full cycle: retrieve -> open window -> process evidence."""
         # 1. Open lability window (simulating retrieval)
         engine.open_lability_window("episode", seeded_episode)
@@ -652,13 +689,14 @@ class TestIntegration:
 
         # Verify log entries exist
         logs = engine.db.fetchall(
-            f"SELECT * FROM reconsolidation_log WHERE id IN "
-            f"({','.join('?' for _ in log_ids)})",
+            f"SELECT * FROM reconsolidation_log WHERE id IN ({','.join('?' for _ in log_ids)})",
             tuple(log_ids),
         )
         assert len(logs) == len(log_ids)
 
-    def test_pe_fields_updated_on_semantic(self, engine: ReconsolidationEngine, seeded_semantic: str):
+    def test_pe_fields_updated_on_semantic(
+        self, engine: ReconsolidationEngine, seeded_semantic: str
+    ):
         engine.process_new_evidence(
             memory_type="semantic_node",
             memory_id=seeded_semantic,

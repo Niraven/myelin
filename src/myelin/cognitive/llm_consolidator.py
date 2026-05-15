@@ -12,8 +12,6 @@ from structured episode data. Produces genuinely informative summaries.
 
 from __future__ import annotations
 
-import json
-import math
 from collections import Counter, defaultdict
 from typing import Any
 from uuid import uuid4
@@ -56,26 +54,48 @@ def _extract_action_type(action: str) -> str:
     Uses a pre-built mapping for the -ing forms we recognize.
     Falls back to heuristic for unknown actions.
     """
-    _ING_TO_BASE = {
-        "running": "run", "executing": "execute", "calling": "call",
-        "deploying": "deploy", "building": "build",
-        "testing": "test", "configuring": "configure",
-        "installing": "install", "updating": "update", "creating": "create",
-        "removing": "remove", "checking": "check", "verifying": "verify",
-        "analyzing": "analyze", "processing": "process",
-        "using": "use", "applying": "apply",
-        "starting": "start", "stopping": "stop", "restarting": "restart",
-        "fetching": "fetch", "downloading": "download", "uploading": "upload",
-        "pushing": "push", "pulling": "pull",
-        "logging": "log", "monitoring": "monitor", "scanning": "scan",
-        "backing up": "backup", "restoring": "restore",
-        "migrating": "migrate", "connecting": "connect",
-        "disconnecting": "disconnect", "investigating": "investigate",
-        "debugging": "debug", "fixing": "fix", "patching": "patch",
+    ing_to_base = {
+        "running": "run",
+        "executing": "execute",
+        "calling": "call",
+        "deploying": "deploy",
+        "building": "build",
+        "testing": "test",
+        "configuring": "configure",
+        "installing": "install",
+        "updating": "update",
+        "creating": "create",
+        "removing": "remove",
+        "checking": "check",
+        "verifying": "verify",
+        "analyzing": "analyze",
+        "processing": "process",
+        "using": "use",
+        "applying": "apply",
+        "starting": "start",
+        "stopping": "stop",
+        "restarting": "restart",
+        "fetching": "fetch",
+        "downloading": "download",
+        "uploading": "upload",
+        "pushing": "push",
+        "pulling": "pull",
+        "logging": "log",
+        "monitoring": "monitor",
+        "scanning": "scan",
+        "backing up": "backup",
+        "restoring": "restore",
+        "migrating": "migrate",
+        "connecting": "connect",
+        "disconnecting": "disconnect",
+        "investigating": "investigate",
+        "debugging": "debug",
+        "fixing": "fix",
+        "patching": "patch",
         "rolling back": "rollback",
     }
     action_lower = action.lower().strip()
-    for prefix, base in _ING_TO_BASE.items():
+    for prefix, base in ing_to_base.items():
         if action_lower.startswith(prefix):
             return base
     # Fallback: take first meaningful word
@@ -97,7 +117,7 @@ def _extract_entities_from_text(text: str) -> list[str]:
     words = text.split()
     entities: list[str] = []
     for w in words:
-        clean = w.strip('"\'(),.;:!?[]{}')
+        clean = w.strip("\"'(),.;:!?[]{}")
         if not clean or len(clean) < 3:
             continue
         # Capitalized words (proper nouns)
@@ -107,16 +127,57 @@ def _extract_entities_from_text(text: str) -> list[str]:
         if "_" in clean or "-" in clean:
             entities.append(clean.lower())
         # Known tool/service keywords
-        if any(kw in clean.lower() for kw in [
-            "git", "docker", "pip", "npm", "yarn", "aws", "gcp", "azure",
-            "kubernetes", "k8s", "terraform", "ansible", "helm", "istio",
-            "postgres", "mysql", "redis", "mongodb", "elasticsearch",
-            "python", "node", "go", "rust", "typescript", "javascript",
-            "react", "vue", "angular", "django", "flask", "fastapi",
-            "pytest", "jest", "mocha", "eslint", "prettier",
-            "linux", "ubuntu", "debian", "alpine", "nginx", "apache",
-            "vscode", "neovim", "vim", "intellij",
-        ]):
+        if any(
+            kw in clean.lower()
+            for kw in [
+                "git",
+                "docker",
+                "pip",
+                "npm",
+                "yarn",
+                "aws",
+                "gcp",
+                "azure",
+                "kubernetes",
+                "k8s",
+                "terraform",
+                "ansible",
+                "helm",
+                "istio",
+                "postgres",
+                "mysql",
+                "redis",
+                "mongodb",
+                "elasticsearch",
+                "python",
+                "node",
+                "go",
+                "rust",
+                "typescript",
+                "javascript",
+                "react",
+                "vue",
+                "angular",
+                "django",
+                "flask",
+                "fastapi",
+                "pytest",
+                "jest",
+                "mocha",
+                "eslint",
+                "prettier",
+                "linux",
+                "ubuntu",
+                "debian",
+                "alpine",
+                "nginx",
+                "apache",
+                "vscode",
+                "neovim",
+                "vim",
+                "intellij",
+            ]
+        ):
             entities.append(clean.lower())
     return entities
 
@@ -134,10 +195,15 @@ def _action_sequence_summary(actions: list[str]) -> str:
         return f"predominantly {action} ({count}x)"
     elif len(most_common) <= 3:
         parts = [f"{a} ({c}x)" for a, c in most_common]
-        return "followed by ".join([parts[0], parts[1]]) if len(parts) == 2 \
+        return (
+            "followed by ".join([parts[0], parts[1]])
+            if len(parts) == 2
             else ", then ".join([", ".join(parts[:-1]), parts[-1]])
+        )
     else:
-        return f"varied: {', '.join(a for a, _ in most_common[:3])} plus {len(most_common) - 3} others"
+        return (
+            f"varied: {', '.join(a for a, _ in most_common[:3])} plus {len(most_common) - 3} others"
+        )
 
 
 def _success_analysis(successes: int, total: int, action: str) -> str:
@@ -148,7 +214,9 @@ def _success_analysis(successes: int, total: int, action: str) -> str:
     if rate >= 1.0:
         return f"All {total} attempts succeeded — {action} is reliable in this context"
     elif rate >= 0.8:
-        return f"{successes}/{total} succeeded ({rate:.0%}) — high reliability, minor issues present"
+        return (
+            f"{successes}/{total} succeeded ({rate:.0%}) — high reliability, minor issues present"
+        )
     elif rate >= 0.5:
         return f"{successes}/{total} succeeded ({rate:.0%}) — moderate reliability, {failures} failure{'s' if failures > 1 else ''} suggest edge cases"
     elif rate > 0.0:
@@ -168,10 +236,7 @@ def _compute_cluster_confidence(
     action_factor = min(unique_actions / 3.0, 1.0)
 
     confidence = (
-        0.40 * size_factor
-        + 0.30 * success_factor
-        + 0.15 * entity_factor
-        + 0.15 * action_factor
+        0.40 * size_factor + 0.30 * success_factor + 0.15 * entity_factor + 0.15 * action_factor
     )
     return max(CONFIDENCE_MIN, min(CONFIDENCE_MAX, confidence))
 
@@ -255,9 +320,7 @@ class LLMConsolidator(CognitiveProcess):
 
         return {"processed": processed, "created": created}
 
-    def _cluster_by_domain(
-        self, episodes: list[dict[str, Any]]
-    ) -> dict[str, list[dict[str, Any]]]:
+    def _cluster_by_domain(self, episodes: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
         """Group episodes by domain."""
         groups: dict[str, list] = defaultdict(list)
         for ep in episodes:
@@ -265,9 +328,7 @@ class LLMConsolidator(CognitiveProcess):
             groups[domain].append(ep)
         return dict(groups)
 
-    def _cluster_by_content(
-        self, episodes: list[dict[str, Any]]
-    ) -> list[list[dict[str, Any]]]:
+    def _cluster_by_content(self, episodes: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
         """Cluster episodes within a domain using Jaccard similarity on content_text.
 
         Always checks content similarity — even small groups must pass threshold.
@@ -319,9 +380,7 @@ class LLMConsolidator(CognitiveProcess):
                 if j in assigned:
                     continue
                 # Join if similar to any existing cluster member
-                cluster_indices = [
-                    episodes.index(m) for m in cluster
-                ]
+                cluster_indices = [episodes.index(m) for m in cluster]
                 if any(sim_matrix[k][j] >= JACCARD_SIMILARITY_THRESHOLD for k in cluster_indices):
                     cluster.append(episodes[j])
                     assigned.add(j)
@@ -404,8 +463,7 @@ class LLMConsolidator(CognitiveProcess):
 
         # ── Action type context ──────────────────────────────────
         action_type_text = ""
-        type_parts = [f"{t} ({c}x)"
-                       for t, c in type_counter.most_common(3)] if type_counter else []
+        type_parts = [f"{t} ({c}x)" for t, c in type_counter.most_common(3)] if type_counter else []
         if type_parts:
             action_type_text = f"Action types: {', '.join(type_parts)}."
 
@@ -414,7 +472,7 @@ class LLMConsolidator(CognitiveProcess):
         if failure_contexts and success_rate < 0.8:
             # Pick the most informative failure context
             best_fail = max(failure_contexts, key=len)
-            failure_text = f"Failure observed: \"{best_fail[:150]}\""
+            failure_text = f'Failure observed: "{best_fail[:150]}"'
 
         # ── Assemble summary ─────────────────────────────────────
         parts = [

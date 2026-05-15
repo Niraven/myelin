@@ -16,7 +16,8 @@ from __future__ import annotations
 import re
 import time
 from collections import Counter, defaultdict
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 from uuid import uuid4
 
 from ..core.database import Database
@@ -403,7 +404,7 @@ class PatternExtractor:
 class HybridEntityExtractor:
     """Two-tier entity extraction: regex (fast) + LLM (deep)."""
 
-    def __init__(self, llm_extract: Callable | None = None):
+    def __init__(self, llm_extract: Callable[[list[str]], list[dict[str, str]]] | None = None):
         self.regex = PatternExtractor()
         self.llm = llm_extract
 

@@ -15,20 +15,18 @@ from __future__ import annotations
 import json
 import time
 from datetime import datetime, timedelta
-from typing import Any
 from uuid import uuid4
 
 import pytest
 
-from myelin.core.database import Database
-from myelin.core.schema import SCHEMA_SQL
-from myelin.cognitive.sleep import SleepCycle
 from myelin.cognitive.nrem_sleep import NREMPhase
 from myelin.cognitive.rem_sleep import REMPhase
+from myelin.cognitive.sleep import SleepCycle
+from myelin.core.database import Database
+from myelin.core.schema import SCHEMA_SQL
 from myelin.knowledge.entities import EntityStore
 from myelin.knowledge.graph import KnowledgeGraph
 from myelin.knowledge.temporal import TemporalIndex
-
 
 # ── Helpers ──────────────────────────────────────────────────────
 
@@ -158,6 +156,8 @@ def _make_components(db: Database):
         "graph": KnowledgeGraph(db),
         "temporal": TemporalIndex(db),
     }
+
+
 # NREM Phase Tests
 # ====================================================================
 
@@ -221,7 +221,7 @@ class TestNREMPhase:
         assert results["synaptic_downscaled"] >= 1
 
         # The relationship should exist (either created by Hebbian or was pre-existing)
-        rels = db.fetchall(
+        db.fetchall(
             "SELECT * FROM relationships "
             "WHERE ((source_entity_id = ? AND target_entity_id = ?) "
             "   OR (source_entity_id = ? AND target_entity_id = ?))",
@@ -246,12 +246,18 @@ class TestNREMPhase:
         e2 = _add_entity(db, "docker", "tool", domain="dev")
 
         recent_ep = _add_episode(
-            db, action="git push", content="using git with docker",
-            domain="dev", timestamp=recent_ts,
+            db,
+            action="git push",
+            content="using git with docker",
+            domain="dev",
+            timestamp=recent_ts,
         )
         old_ep = _add_episode(
-            db, action="git push", content="using git with docker",
-            domain="dev", timestamp=old_ts,
+            db,
+            action="git push",
+            content="using git with docker",
+            domain="dev",
+            timestamp=old_ts,
         )
         _add_entity_mention(db, e1, recent_ep)
         _add_entity_mention(db, e2, recent_ep)
@@ -273,14 +279,17 @@ class TestNREMPhase:
         e2 = _add_entity(db, "docker", "tool", domain="dev")
 
         ep = _add_episode(
-            db, action="git push", content="using git with docker deployment",
-            domain="dev", priority_score=0.8,
+            db,
+            action="git push",
+            content="using git with docker deployment",
+            domain="dev",
+            priority_score=0.8,
         )
         _add_entity_mention(db, e1, ep)
         _add_entity_mention(db, e2, ep)
 
         nrem = NREMPhase(db, EntityStore(db), KnowledgeGraph(db), TemporalIndex(db))
-        results = await nrem.execute()
+        await nrem.execute()
 
         # Should have replayed the high-priority episode
         updated_ep = db.fetchone("SELECT replay_count FROM episodes WHERE id = ?", (ep,))
@@ -330,8 +339,11 @@ class TestREMPhase:
         """Failed episodes generate counterfactual dream nodes."""
         db = _make_db()
         ep = _add_episode(
-            db, action="git push failed", content="error pushing to remote",
-            domain="dev", success=False,
+            db,
+            action="git push failed",
+            content="error pushing to remote",
+            domain="dev",
+            success=False,
         )
 
         rem = REMPhase(db, EntityStore(db), KnowledgeGraph(db), TemporalIndex(db))
@@ -339,9 +351,7 @@ class TestREMPhase:
 
         assert results["counterfactuals_generated"] == 1
 
-        dream = db.fetchone(
-            "SELECT * FROM semantic_nodes WHERE node_type = 'dream'"
-        )
+        dream = db.fetchone("SELECT * FROM semantic_nodes WHERE node_type = 'dream'")
         assert dream is not None
         dream_content = json.loads(dream["content"])
         assert dream_content["type"] == "counterfactual_dream"
@@ -351,8 +361,8 @@ class TestREMPhase:
     async def test_novel_connection_discovery(self):
         """Cross-domain entity pairs get weak connections."""
         db = _make_db()
-        e1 = _add_entity(db, "git", "tool", mention_count=5, domain="dev")
-        e2 = _add_entity(db, "slack", "service", mention_count=5, domain="communication")
+        _add_entity(db, "git", "tool", mention_count=5, domain="dev")
+        _add_entity(db, "slack", "service", mention_count=5, domain="communication")
 
         # They should be >3 hops apart with no existing connection
         rem = REMPhase(db, EntityStore(db), KnowledgeGraph(db), TemporalIndex(db))
@@ -367,8 +377,12 @@ class TestREMPhase:
         db = _make_db()
         e1 = _add_entity(db, "git", "tool", domain="dev")
         ep1 = _add_episode(
-            db, action="git push", content="deploy with git",
-            domain="dev", td_error=0.8, importance_score=0.9,
+            db,
+            action="git push",
+            content="deploy with git",
+            domain="dev",
+            td_error=0.8,
+            importance_score=0.9,
         )
         _add_entity_mention(db, e1, ep1)
 
@@ -377,7 +391,9 @@ class TestREMPhase:
 
         assert results["tag_scores_computed"] > 0
 
-        updated = db.fetchone("SELECT priority_score, replay_count FROM episodes WHERE id = ?", (ep1,))
+        updated = db.fetchone(
+            "SELECT priority_score, replay_count FROM episodes WHERE id = ?", (ep1,)
+        )
         assert updated is not None
         # TAG score = 0.4 * 0.8 + 0.35 * 0.9 + 0.25 * 1.0 = 0.32 + 0.315 + 0.25 = 0.885
         assert abs(float(updated["priority_score"]) - 0.885) < 0.01
@@ -410,8 +426,12 @@ class TestSleepCycle:
         _add_relationship(db, e1, e2, "related_to", strength=2.0)
 
         ep = _add_episode(
-            db, action="git push", content="using git with docker for deployment",
-            domain="dev", priority_score=0.8, success=False,
+            db,
+            action="git push",
+            content="using git with docker for deployment",
+            domain="dev",
+            priority_score=0.8,
+            success=False,
         )
         _add_entity_mention(db, e1, ep)
         _add_entity_mention(db, e2, ep)
@@ -454,23 +474,24 @@ class TestSleepCycle:
         _add_relationship(db, e2, e3, "related_to", strength=1.0)
 
         ep = _add_episode(
-            db, action="git push", content="deploy with git and docker",
-            domain="dev", success=False,
+            db,
+            action="git push",
+            content="deploy with git and docker",
+            domain="dev",
+            success=False,
         )
         _add_entity_mention(db, e1, ep)
         _add_entity_mention(db, e2, ep)
 
         cycle = SleepCycle(db, EntityStore(db), KnowledgeGraph(db), TemporalIndex(db))
-        results = await cycle.execute()
+        await cycle.execute()
 
         # Check dreamed_connections exist
-        dreamed = db.fetchall(
-            "SELECT * FROM relationships WHERE relation_type = 'dreamed_connection'"
-        )
+        db.fetchall("SELECT * FROM relationships WHERE relation_type = 'dreamed_connection'")
 
         # At minimum, NREM downscaled existing relationships
         remaining = db.fetchall("SELECT * FROM relationships WHERE relation_type = 'related_to'")
-        for rel in remaining:
+        for _rel in remaining:
             # Should be reduced by downscaling
             pass  # Just verifying no exceptions
 
@@ -569,7 +590,9 @@ class TestEdgeCases:
     async def test_semantic_dream_node_persistence(self):
         """Counterfactual dream nodes persist correctly in semantic_nodes."""
         db = _make_db()
-        _add_episode(db, action="deploy failed", content="deployment error", domain="prod", success=False)
+        _add_episode(
+            db, action="deploy failed", content="deployment error", domain="prod", success=False
+        )
 
         rem = REMPhase(db, EntityStore(db), KnowledgeGraph(db), TemporalIndex(db))
         await rem.execute()

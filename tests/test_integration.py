@@ -317,8 +317,12 @@ class TestTemporalQuery:
 
     async def test_what_changed(self, handlers):
         e1 = handlers.entities.upsert_entity("cloudflared", "service", "cloudflared")
-        handlers.temporal.record_state("booting", entity_id=e1, domain="infrastructure", confidence=0.55)
-        handlers.temporal.record_state("running", entity_id=e1, domain="infrastructure", confidence=0.95)
+        handlers.temporal.record_state(
+            "booting", entity_id=e1, domain="infrastructure", confidence=0.55
+        )
+        handlers.temporal.record_state(
+            "running", entity_id=e1, domain="infrastructure", confidence=0.95
+        )
 
         result = await handlers.what_changed(
             domain="infrastructure",

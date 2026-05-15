@@ -2,8 +2,6 @@
 
 import pytest
 
-from myelin.memory.retriever import MultiSignalRetriever
-
 
 class TestRetrieverImportanceSignal:
     def test_default_weights_include_importance(self, retriever):
@@ -16,16 +14,19 @@ class TestRetrieverImportanceSignal:
     def test_importance_score_computed(self, retriever, tmp_db):
         """Candidates with importance_score should reflect it in _scores."""
         # Insert an episode with a known importance_score
-        tmp_db.insert("episodes", {
-            "id": "ep-1",
-            "agent_id": "agent-1",
-            "session_id": "sess-1",
-            "action": "test_action",
-            "action_type": "tool_call",
-            "content_text": "test content for retrieval",
-            "success": 1,
-            "importance_score": 0.9,
-        })
+        tmp_db.insert(
+            "episodes",
+            {
+                "id": "ep-1",
+                "agent_id": "agent-1",
+                "session_id": "sess-1",
+                "action": "test_action",
+                "action_type": "tool_call",
+                "content_text": "test content for retrieval",
+                "success": 1,
+                "importance_score": 0.9,
+            },
+        )
         # FTS trigger should sync; wait a moment for the insert to propagate
         results = retriever.retrieve("test content", limit=5)
         for r in results:
@@ -37,26 +38,32 @@ class TestRetrieverImportanceSignal:
 
     def test_custom_importance_weight(self, retriever, tmp_db):
         """Custom weights should allow boosting importance."""
-        tmp_db.insert("episodes", {
-            "id": "ep-high",
-            "agent_id": "agent-1",
-            "session_id": "sess-1",
-            "action": "deploy",
-            "action_type": "tool_call",
-            "content_text": "production deployment",
-            "success": 1,
-            "importance_score": 0.95,
-        })
-        tmp_db.insert("episodes", {
-            "id": "ep-low",
-            "agent_id": "agent-1",
-            "session_id": "sess-1",
-            "action": "ls",
-            "action_type": "tool_call",
-            "content_text": "production deployment",
-            "success": 1,
-            "importance_score": 0.1,
-        })
+        tmp_db.insert(
+            "episodes",
+            {
+                "id": "ep-high",
+                "agent_id": "agent-1",
+                "session_id": "sess-1",
+                "action": "deploy",
+                "action_type": "tool_call",
+                "content_text": "production deployment",
+                "success": 1,
+                "importance_score": 0.95,
+            },
+        )
+        tmp_db.insert(
+            "episodes",
+            {
+                "id": "ep-low",
+                "agent_id": "agent-1",
+                "session_id": "sess-1",
+                "action": "ls",
+                "action_type": "tool_call",
+                "content_text": "production deployment",
+                "success": 1,
+                "importance_score": 0.1,
+            },
+        )
         results = retriever.retrieve(
             "production deployment",
             limit=2,

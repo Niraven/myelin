@@ -11,9 +11,7 @@ and where it might be wrong. This provides:
 from __future__ import annotations
 
 import json
-import math
-import time
-from collections import defaultdict
+import logging
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -23,8 +21,6 @@ from ..memory.episodic import EpisodicMemory
 from ..memory.procedural import ProceduralMemory
 from ..memory.semantic import SemanticMemory
 from .base import CognitiveProcess
-
-import logging
 
 log = logging.getLogger("myelin.self_model")
 
@@ -99,11 +95,11 @@ def detect_confirmation_bias(
     recent_confidences: list[float],
 ) -> float:
     """Detect confirmation bias: tendency to ignore disconfirming evidence.
-    
+
     Returns bias score 0-1 where:
     - 0 = no bias (evidence is honestly evaluated)
     - 1 = strong bias (failures explained away, successes over-weighted)
-    
+
     Proxy: if confidence stays high despite repeated failures, bias is present.
     """
     if len(recent_outcomes) < 3:
@@ -114,9 +110,7 @@ def detect_confirmation_bias(
         return 0.0
 
     # Confidence after failures should decrease
-    fail_confidences = [
-        recent_confidences[i] for i, o in enumerate(recent_outcomes) if not o
-    ]
+    fail_confidences = [recent_confidences[i] for i, o in enumerate(recent_outcomes) if not o]
     if not fail_confidences:
         return 0.0
 
@@ -130,7 +124,7 @@ def detect_recency_bias(
     overall_success_rate: float,
 ) -> float:
     """Detect recency bias: recent events unduly influence confidence.
-    
+
     Returns bias score 0-1 where:
     - large gap between recent and overall = recency bias
     """
@@ -142,7 +136,7 @@ def detect_overconfidence(
     calibration_offset: float,
 ) -> float:
     """Detect overconfidence: predicted > actual success rate.
-    
+
     Returns bias score 0-1.
     """
     if calibration_offset <= 0:
@@ -250,7 +244,7 @@ class SelfModel(CognitiveProcess):
         return True
 
     async def execute(self) -> dict[str, Any]:
-        results = {
+        results: dict[str, Any] = {
             "domains_assessed": 0,
             "biases_detected": 0,
             "insights_generated": 0,
@@ -268,14 +262,9 @@ class SelfModel(CognitiveProcess):
 
         # 2. Detect biases
         recent_outcomes, recent_confidences = self._get_recent_calibration_data()
-        calibration_offsets = [
-            c.get("calibration_offset", 0.0)
-            for c in competence_map.values()
-        ]
+        calibration_offsets = [c.get("calibration_offset", 0.0) for c in competence_map.values()]
         avg_offset = (
-            sum(calibration_offsets) / len(calibration_offsets)
-            if calibration_offsets
-            else 0.0
+            sum(calibration_offsets) / len(calibration_offsets) if calibration_offsets else 0.0
         )
 
         overall_sr = self._get_overall_success_rate()
@@ -306,9 +295,7 @@ class SelfModel(CognitiveProcess):
         return results
 
     def _get_domains(self) -> list[str]:
-        rows = self.db.fetchall(
-            "SELECT DISTINCT domain FROM episodes WHERE domain IS NOT NULL"
-        )
+        rows = self.db.fetchall("SELECT DISTINCT domain FROM episodes WHERE domain IS NOT NULL")
         return [r["domain"] for r in rows if r["domain"]]
 
     def _assess_domain(self, domain: str) -> dict[str, Any] | None:
@@ -326,11 +313,7 @@ class SelfModel(CognitiveProcess):
             return None
 
         success_rate = sum(1 for e in eps if e.get("success", 1)) / len(eps)
-        avg_confidence = (
-            sum(p.get("confidence", 0.5) for p in procs) / len(procs)
-            if procs
-            else 0.0
-        )
+        avg_confidence = sum(p.get("confidence", 0.5) for p in procs) / len(procs) if procs else 0.0
 
         # Calibration offset: predicted vs actual
         calibration_offset = 0.0
@@ -350,8 +333,12 @@ class SelfModel(CognitiveProcess):
         trend_delta = recent_sr - success_rate
 
         return assess_domain_competence(
-            ep_count, proc_count, success_rate, avg_confidence,
-            calibration_offset, trend_delta,
+            ep_count,
+            proc_count,
+            success_rate,
+            avg_confidence,
+            calibration_offset,
+            trend_delta,
         )
 
     def _get_recent_calibration_data(self) -> tuple[list[bool], list[float]]:
@@ -365,9 +352,7 @@ class SelfModel(CognitiveProcess):
         return outcomes, confidences
 
     def _get_overall_success_rate(self) -> float:
-        row = self.db.fetchone(
-            "SELECT AVG(CAST(success AS REAL)) as sr FROM episodes"
-        )
+        row = self.db.fetchone("SELECT AVG(CAST(success AS REAL)) as sr FROM episodes")
         return row["sr"] if row and row["sr"] is not None else 0.5
 
     def _get_recent_success_rate(self) -> float:
@@ -402,24 +387,21 @@ class SelfModel(CognitiveProcess):
                 competence_map.items(),
                 key=lambda x: x[1].get("competence_score", 0),
             )[:5]
-            improving = [
-                d for d, v in competence_map.items()
-                if v.get("trend") == "improving"
-            ]
-            declining = [
-                d for d, v in competence_map.items()
-                if v.get("trend") == "declining"
-            ]
+            improving = [d for d, v in competence_map.items() if v.get("trend") == "improving"]
+            declining = [d for d, v in competence_map.items() if v.get("trend") == "declining"]
 
-            self.db.insert("self_evaluations", {
-                "id": __import__("uuid").uuid4().hex[:16],
-                "timestamp": datetime.utcnow().isoformat(),
-                "top_domains": json.dumps([{"domain": d, **v} for d, v in top]),
-                "weak_domains": json.dumps([{"domain": d, **v} for d, v in weak]),
-                "improving": json.dumps(improving),
-                "declining": json.dumps(declining),
-                "insights": json.dumps(insights),
-            })
+            self.db.insert(
+                "self_evaluations",
+                {
+                    "id": __import__("uuid").uuid4().hex[:16],
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "top_domains": json.dumps([{"domain": d, **v} for d, v in top]),
+                    "weak_domains": json.dumps([{"domain": d, **v} for d, v in weak]),
+                    "improving": json.dumps(improving),
+                    "declining": json.dumps(declining),
+                    "insights": json.dumps(insights),
+                },
+            )
             self.db.commit()
         except Exception as e:
             log.warning(f"Failed to store self-evaluation: {e}")

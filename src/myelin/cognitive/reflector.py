@@ -11,19 +11,20 @@ Observations -> Reflections -> Higher-order Reflections
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Iterable, Mapping, MutableMapping
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Any, DefaultDict, Dict, Iterable, Mapping, MutableMapping
+from datetime import UTC, datetime
+from typing import Any
 
 from ..core.database import Database
 from ..core.models import NodeType, ProcessName, SemanticNode, SourceType
 from ..memory.semantic import SemanticMemory
 from .base import CognitiveProcess
 
-
 # ============================================================================
 # Reflector cognitive process
 # ============================================================================
+
 
 class Reflector(CognitiveProcess):
     name = ProcessName.REFLECTOR
@@ -119,7 +120,7 @@ def _as_iso_timestamp(value: Any) -> float | None:
     if isinstance(value, datetime):
         dt = value
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
+            dt = dt.replace(tzinfo=UTC)
         return dt.timestamp()
 
     if isinstance(value, str):
@@ -172,7 +173,7 @@ def _to_success(value: Any) -> float:
     return 0.0
 
 
-def build_cluster_stats(episodes: Iterable[Episode]) -> Dict[str, ClusterStats]:
+def build_cluster_stats(episodes: Iterable[Episode]) -> dict[str, ClusterStats]:
     """Aggregate episodes into per-cluster frequency/success/recency stats.
 
     Parameters
@@ -190,7 +191,7 @@ def build_cluster_stats(episodes: Iterable[Episode]) -> Dict[str, ClusterStats]:
     * ``timestamp`` / ``ts`` / ``seen_at`` / ``created_at``
     """
 
-    raw: DefaultDict[str, list[float]] = defaultdict(list)
+    raw: defaultdict[str, list[float]] = defaultdict(list)
     success_counts: MutableMapping[str, float] = defaultdict(float)
     seen: MutableMapping[str, float] = {}
 
@@ -213,7 +214,7 @@ def build_cluster_stats(episodes: Iterable[Episode]) -> Dict[str, ClusterStats]:
                 seen[cid] = max(seen.get(cid, ts), ts)
                 break
 
-    cluster_stats: Dict[str, ClusterStats] = {}
+    cluster_stats: dict[str, ClusterStats] = {}
     for cluster_id, occurrences in raw.items():
         frequency = len(occurrences)
         success_rate = success_counts[cluster_id] / frequency if frequency else 0.0

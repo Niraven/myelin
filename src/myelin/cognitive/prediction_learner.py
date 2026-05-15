@@ -10,7 +10,6 @@ Implements Sutton & Barto TD learning adapted for procedure-level predictions:
 
 from __future__ import annotations
 
-import json
 import time
 from typing import Any
 from uuid import uuid4
@@ -69,11 +68,7 @@ def compute_priority_score(
     priority = 0.35 * |td_error| + 0.30 * surprise + 0.35 * importance_score
     All inputs in [0.0, 1.0] range. Result clamped to [0.0, 1.0].
     """
-    score = (
-        0.35 * min(abs(td_error), 1.0)
-        + 0.30 * surprise
-        + 0.35 * importance_score
-    )
+    score = 0.35 * min(abs(td_error), 1.0) + 0.30 * surprise + 0.35 * importance_score
     return max(0.0, min(1.0, score))
 
 
@@ -126,19 +121,22 @@ class PredictionLearner:
 
         pred_id = _new_id()
 
-        self.db.insert("prediction_log", {
-            "id": pred_id,
-            "procedure_id": procedure_id,
-            "episode_id": episode_id,
-            "predicted_success": predicted_success,
-            "predicted_confidence": predicted_confidence,
-            "actual_outcome": None,
-            "td_error": 0.0,
-            "surprise_score": None,
-            "domain": domain or proc.get("domain"),
-            "agent_id": agent_id,
-            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
-        })
+        self.db.insert(
+            "prediction_log",
+            {
+                "id": pred_id,
+                "procedure_id": procedure_id,
+                "episode_id": episode_id,
+                "predicted_success": predicted_success,
+                "predicted_confidence": predicted_confidence,
+                "actual_outcome": None,
+                "td_error": 0.0,
+                "surprise_score": None,
+                "domain": domain or proc.get("domain"),
+                "agent_id": agent_id,
+                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            },
+        )
 
         return {
             "prediction_id": pred_id,
@@ -192,11 +190,15 @@ class PredictionLearner:
         surprise = compute_surprise(td_error, predicted_confidence)
 
         # Update prediction log
-        self.db.update("prediction_log", prediction_id, {
-            "actual_outcome": actual_val,
-            "td_error": td_error,
-            "surprise_score": surprise,
-        })
+        self.db.update(
+            "prediction_log",
+            prediction_id,
+            {
+                "actual_outcome": actual_val,
+                "td_error": td_error,
+                "surprise_score": surprise,
+            },
+        )
 
         # Step 4: Update procedure confidence with TD-modulated learning rate
         self._update_procedure_confidence(
@@ -239,7 +241,9 @@ class PredictionLearner:
         lr = td_modulated_learning_rate(self.base_lr, abs_td)
 
         new_confidence = bayesian_confidence_update(
-            proc["confidence"], actual_success, learning_rate=lr,
+            proc["confidence"],
+            actual_success,
+            learning_rate=lr,
         )
 
         # Running PE tracking
@@ -251,25 +255,37 @@ class PredictionLearner:
         total = success_count + failure_count
         actual_rate = success_count / total if total > 0 else None
 
-        self.db.update("procedures", procedure_id, {
-            "confidence": new_confidence,
-            "success_count": success_count,
-            "failure_count": failure_count,
-            "prediction_error": abs_td,
-            "surprise_score": abs(td_error) * (1.0 - predicted_confidence) if td_error != 0 else 0.0,
-            "total_pe_sum": total_pe_sum,
-            "pe_count": pe_count,
-            "actual_success_rate": actual_rate,
-            "calibration_offset": (new_confidence - actual_rate) if actual_rate is not None else 0.0,
-            "last_executed": time.strftime("%Y-%m-%dT%H:%M:%S"),
-            "updated_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
-        })
+        self.db.update(
+            "procedures",
+            procedure_id,
+            {
+                "confidence": new_confidence,
+                "success_count": success_count,
+                "failure_count": failure_count,
+                "prediction_error": abs_td,
+                "surprise_score": abs(td_error) * (1.0 - predicted_confidence)
+                if td_error != 0
+                else 0.0,
+                "total_pe_sum": total_pe_sum,
+                "pe_count": pe_count,
+                "actual_success_rate": actual_rate,
+                "calibration_offset": (new_confidence - actual_rate)
+                if actual_rate is not None
+                else 0.0,
+                "last_executed": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                "updated_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            },
+        )
 
         # Auto-promote to active if threshold met (mirrors procedural.record_execution)
         if new_confidence >= 0.8 and proc.get("status") in ("draft",):
-            self.db.update("procedures", procedure_id, {
-                "status": "active",
-            })
+            self.db.update(
+                "procedures",
+                procedure_id,
+                {
+                    "status": "active",
+                },
+            )
 
         return new_confidence
 
@@ -284,7 +300,8 @@ class PredictionLearner:
         priority = 0.35 * |td_error| + 0.30 * surprise + 0.35 * importance_score
         """
         episode = self.db.fetchone(
-            "SELECT * FROM episodes WHERE id = ?", (episode_id,),
+            "SELECT * FROM episodes WHERE id = ?",
+            (episode_id,),
         )
         if not episode:
             return
@@ -292,11 +309,15 @@ class PredictionLearner:
         importance = episode.get("importance_score", 0.5) or 0.5
         priority = compute_priority_score(td_error, surprise, importance)
 
-        self.db.update("episodes", episode_id, {
-            "td_error": abs(td_error),
-            "surprise_score": surprise,
-            "priority_score": priority,
-        })
+        self.db.update(
+            "episodes",
+            episode_id,
+            {
+                "td_error": abs(td_error),
+                "surprise_score": surprise,
+                "priority_score": priority,
+            },
+        )
 
     def _build_outcome_response(
         self,
@@ -323,12 +344,14 @@ class PredictionLearner:
                 result["calibration_offset"] = proc.get("calibration_offset", 0.0)
             return result
 
-        result.update({
-            "status": "recorded",
-            "actual_success": actual_success,
-            "td_error": td_error,
-            "surprise_score": surprise,
-        })
+        result.update(
+            {
+                "status": "recorded",
+                "actual_success": actual_success,
+                "td_error": td_error,
+                "surprise_score": surprise,
+            }
+        )
         if proc:
             result["new_confidence"] = proc["confidence"]
             result["calibration_offset"] = proc.get("calibration_offset", 0.0)

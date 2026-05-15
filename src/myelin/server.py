@@ -29,8 +29,8 @@ from .transfer.protocol import TransferProtocol
 
 def _call_llm(endpoint: str, prompt: str) -> str:
     """Minimal LLM call using stdlib urllib."""
-    import urllib.request
     import urllib.error
+    import urllib.request
 
     data = json.dumps(
         {"model": "default", "messages": [{"role": "user", "content": prompt}]}
@@ -56,6 +56,7 @@ def _call_llm(endpoint: str, prompt: str) -> str:
         return f"[LLM error: {exc}]"
     except Exception as exc:
         return f"[LLM error: {exc}]"
+
 
 TOOLS = [
     Tool(
@@ -317,7 +318,10 @@ TOOLS = [
         inputSchema={
             "type": "object",
             "properties": {
-                "domain": {"type": "string", "description": "Domain to query (e.g. infrastructure, deployment)."},
+                "domain": {
+                    "type": "string",
+                    "description": "Domain to query (e.g. infrastructure, deployment).",
+                },
                 "since": {
                     "type": "string",
                     "description": "ISO timestamp or date from which to show changes (e.g. 2026-05-14 or 2026-05-14T09:00:00)",
@@ -486,7 +490,10 @@ def create_server(
     )
 
     if synthesis_model:
-        llm = lambda prompt: _call_llm(synthesis_model, prompt)
+
+        def llm(prompt):
+            return _call_llm(synthesis_model, prompt)
+
         synthesizer = Synthesizer(llm_complete=llm)
     else:
         synthesizer = Synthesizer()

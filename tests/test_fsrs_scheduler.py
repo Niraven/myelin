@@ -1,21 +1,18 @@
 """Tests for FSRS-5 spaced repetition scheduler."""
 
-import math
 from myelin.cognitive.fsrs_scheduler import (
-    DEFAULT_W,
     FSRSScheduler,
-    forgetting_curve,
-    initial_stability,
-    initial_difficulty,
-    stability_after_review,
-    stability_after_fail,
     difficulty_after_review,
+    forgetting_curve,
+    hybrid_activation,
+    initial_difficulty,
+    initial_stability,
     myelin_signals_to_grade,
     optimal_review_interval,
     review_priority,
-    hybrid_activation,
+    stability_after_fail,
+    stability_after_review,
 )
-
 
 # ── Forgetting Curve ────────────────────────────────────────────────
 
@@ -314,7 +311,27 @@ def test_scheduler_status():
 
 def test_scheduler_custom_weights():
     """Custom weights are used correctly."""
-    custom_w = [0.5, 1.5, 4.0, 20.0, 8.0, 0.6, 1.5, 0.005, 1.6, 0.12, 1.1, 2.0, 0.12, 0.3, 2.3, 0.25, 3.0, 0.55, 0.7]
+    custom_w = [
+        0.5,
+        1.5,
+        4.0,
+        20.0,
+        8.0,
+        0.6,
+        1.5,
+        0.005,
+        1.6,
+        0.12,
+        1.1,
+        2.0,
+        0.12,
+        0.3,
+        2.3,
+        0.25,
+        3.0,
+        0.55,
+        0.7,
+    ]
     sched = FSRSScheduler(w=custom_w)
     state = sched.init_memory(grade=3)
     assert state["stability"] > 0

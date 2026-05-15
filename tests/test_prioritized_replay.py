@@ -9,28 +9,24 @@ import json
 import math
 import time
 from datetime import datetime, timedelta
-from typing import Any
 from uuid import uuid4
 
 import pytest
 
-from myelin.core.database import Database
-from myelin.core.schema import SCHEMA_SQL
 from myelin.cognitive.prioritized_replay import (
+    BATCH_SIZE,
+    FRESHPER_DECAY,
+    IS_BETA_END,
+    IS_BETA_START,
+    MAX_REPLAY_COUNT,
+    PRIORITY_FLOOR,
+    W_IMPORTANCE,
+    W_TD_ERROR,
     PrioritizedReplay,
     _hours_since,
-    FRESHPER_DECAY,
-    PRIORITY_FLOOR,
-    MAX_REPLAY_COUNT,
-    W_TD_ERROR,
-    W_SURPRISE,
-    W_IMPORTANCE,
-    IMPORTANCE_HALF_LIFE_HOURS,
-    PER_ALPHA,
-    IS_BETA_START,
-    IS_BETA_END,
-    BATCH_SIZE,
 )
+from myelin.core.database import Database
+from myelin.core.schema import SCHEMA_SQL
 from myelin.knowledge.entities import EntityStore
 from myelin.knowledge.graph import KnowledgeGraph
 
@@ -321,8 +317,8 @@ async def test_execute_replays_and_increments_count(tmp_db):
 async def test_execute_strengthens_entities(tmp_db):
     # Create two entities and an episode that mentions them
     # Use pytest (standalone match) and git commit (verb+noun pattern)
-    ent1 = _add_entity(tmp_db, name="pytest", canonical_name="pytest")
-    ent2 = _add_entity(tmp_db, name="git commit", canonical_name="git commit")
+    _add_entity(tmp_db, name="pytest", canonical_name="pytest")
+    _add_entity(tmp_db, name="git commit", canonical_name="git commit")
     _add_episode(tmp_db, content="run pytest and git commit together")
     replay = _make_replay(tmp_db)
     result = await replay.execute()

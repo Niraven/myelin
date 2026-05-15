@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Callable, Iterable, Mapping, Sequence
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -17,24 +18,14 @@ class SearchResult:
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     @classmethod
-    def from_mapping(cls, item: Mapping[str, Any]) -> "SearchResult":
+    def from_mapping(cls, item: Mapping[str, Any]) -> SearchResult:
         if isinstance(item, SearchResult):
             return item
         if not isinstance(item, Mapping):
             raise TypeError("Search results must be Mapping or SearchResult instances.")
 
-        title = (
-            item.get("title")
-            or item.get("name")
-            or item.get("headline")
-            or "Untitled result"
-        )
-        url = (
-            item.get("url")
-            or item.get("link")
-            or item.get("source_url")
-            or ""
-        )
+        title = item.get("title") or item.get("name") or item.get("headline") or "Untitled result"
+        url = item.get("url") or item.get("link") or item.get("source_url") or ""
         snippet = (
             item.get("snippet")
             or item.get("excerpt")
@@ -57,7 +48,24 @@ class SearchResult:
             snippet=str(snippet).strip(),
             score=score,
             source=str(source).strip() if source is not None else None,
-            metadata={k: v for k, v in item.items() if k not in {"title", "url", "link", "source_url", "snippet", "excerpt", "description", "content", "score", "rank", "source"}},
+            metadata={
+                k: v
+                for k, v in item.items()
+                if k
+                not in {
+                    "title",
+                    "url",
+                    "link",
+                    "source_url",
+                    "snippet",
+                    "excerpt",
+                    "description",
+                    "content",
+                    "score",
+                    "rank",
+                    "source",
+                }
+            },
         )
 
 
@@ -96,7 +104,7 @@ def _truncate_tokens(text: str, max_tokens: int) -> str:
     words = re.split(r"\s+", text.strip())
     if len(words) <= max_tokens:
         return text.strip()
-    return " ".join(words[: max_tokens]).rstrip(".,;:") + " ..."
+    return " ".join(words[:max_tokens]).rstrip(".,;:") + " ..."
 
 
 def _dedupe_by_url(items: Sequence[SearchResult]) -> list[SearchResult]:
@@ -112,13 +120,15 @@ def _dedupe_by_url(items: Sequence[SearchResult]) -> list[SearchResult]:
 
 
 def _ranked_items(results: Sequence[Any], top_n: int) -> list[SearchResult]:
-    normalized = []
+    normalized: list[tuple[int, SearchResult]] = []
     for idx, result in enumerate(results):
         normalized.append((idx, SearchResult.from_mapping(result)))
 
-    normalized = [item for _, item in sorted(normalized, key=lambda item: (-(item[1].score or -1), item[0]))]
-    normalized = _dedupe_by_url(normalized)
-    return normalized[:max(0, top_n)]
+    ranked = [
+        item for _, item in sorted(normalized, key=lambda item: (-(item[1].score or -1), item[0]))
+    ]
+    ranked = _dedupe_by_url(ranked)
+    return ranked[: max(0, top_n)]
 
 
 def summarize_top_results(

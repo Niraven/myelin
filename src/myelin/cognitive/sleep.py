@@ -176,9 +176,7 @@ class SleepCycle(CognitiveProcess):
         results["entities_merged"] += self._merge_weak_entities()
 
         # Temporal state updates from recent episodes
-        results["temporal_states_updated"] += self._update_temporal_states(
-            recent_episodes[:100]
-        )
+        results["temporal_states_updated"] += self._update_temporal_states(recent_episodes[:100])
 
         # Cross-domain linking (legacy approach)
         results["cross_domain_links"] += self._find_cross_domain_links()
@@ -193,9 +191,7 @@ class SleepCycle(CognitiveProcess):
             recent_episodes,
             weights=ImportanceWeights(frequency=0.4, consequence=0.4, recency=0.2),
         )
-        results["importance_scores_updated"] = importance_computer.persist(
-            self.db, episode_scores
-        )
+        results["importance_scores_updated"] = importance_computer.persist(self.db, episode_scores)
 
         # ── PHASE 1: NREM Sleep ───────────────────────────────
         results["nrem"] = await self.nrem.execute()
@@ -247,8 +243,15 @@ class SleepCycle(CognitiveProcess):
         """Create temporal states from episodes that indicate state changes."""
         updated = 0
         state_keywords = {
-            "deploy", "migrate", "update", "upgrade",
-            "install", "configure", "fix", "break", "fail",
+            "deploy",
+            "migrate",
+            "update",
+            "upgrade",
+            "install",
+            "configure",
+            "fix",
+            "break",
+            "fail",
         }
 
         for ep in episodes:
@@ -300,7 +303,7 @@ class SleepCycle(CognitiveProcess):
         for entity in cross_domain:
             domains = entity["domains"].split(",") if entity["domains"] else []
             for i, d1 in enumerate(domains):
-                for _d2 in domains[i + 1:]:
+                for _d2 in domains[i + 1 :]:
                     domain_entities_1 = self.db.fetchall(
                         "SELECT id FROM entities WHERE domain = ? AND id != ? LIMIT 5",
                         (d1, entity["id"]),

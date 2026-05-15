@@ -20,7 +20,6 @@ cycle. It performs:
 from __future__ import annotations
 
 import json
-import math
 import time
 from collections import defaultdict
 from datetime import datetime, timedelta
@@ -119,9 +118,7 @@ class NREMPhase(CognitiveProcess):
         This prevents unbounded growth. Hebbian strengthening will
         selectively restore strength only to co-occurring pairs.
         """
-        rows = self.db.fetchall(
-            "SELECT id, strength FROM relationships"
-        )
+        rows = self.db.fetchall("SELECT id, strength FROM relationships")
         updated = 0
         for row in rows:
             new_strength = max(0.01, float(row["strength"]) * SYNAPTIC_SCALE)
@@ -161,9 +158,7 @@ class NREMPhase(CognitiveProcess):
             # Resolve to entity IDs
             entity_ids: list[str] = []
             for raw in raw_entities:
-                found = self.entities.find_by_canonical(
-                    raw["canonical_name"], raw["entity_type"]
-                )
+                found = self.entities.find_by_canonical(raw["canonical_name"], raw["entity_type"])
                 if found:
                     entity_ids.append(found["id"])
 
@@ -229,14 +224,12 @@ class NREMPhase(CognitiveProcess):
         cutoff_str = cutoff.isoformat()
 
         recent = self.db.fetchall(
-            "SELECT * FROM episodes WHERE timestamp >= ? "
-            "ORDER BY timestamp DESC LIMIT ?",
+            "SELECT * FROM episodes WHERE timestamp >= ? ORDER BY timestamp DESC LIMIT ?",
             (cutoff_str, NREM_RECENT_LIMIT),
         )
 
         old = self.db.fetchall(
-            "SELECT * FROM episodes WHERE timestamp < ? "
-            "ORDER BY timestamp DESC LIMIT ?",
+            "SELECT * FROM episodes WHERE timestamp < ? ORDER BY timestamp DESC LIMIT ?",
             (cutoff_str, NREM_OLD_LIMIT),
         )
 
@@ -332,8 +325,13 @@ class NREMPhase(CognitiveProcess):
                             "WHERE ((source_entity_id = ? AND target_entity_id = ?) "
                             "   OR (source_entity_id = ? AND target_entity_id = ?)) "
                             "AND relation_type = ?",
-                            (old_entity["id"], ce["id"], ce["id"], old_entity["id"],
-                             RelationType.RELATED_TO.value),
+                            (
+                                old_entity["id"],
+                                ce["id"],
+                                ce["id"],
+                                old_entity["id"],
+                                RelationType.RELATED_TO.value,
+                            ),
                         )
                         if not existing:
                             self.graph.add_relationship(
@@ -395,9 +393,7 @@ class NREMPhase(CognitiveProcess):
             # Resolve to entity IDs
             entity_ids: list[str] = []
             for raw in raw_entities:
-                found = self.entities.find_by_canonical(
-                    raw["canonical_name"], raw["entity_type"]
-                )
+                found = self.entities.find_by_canonical(raw["canonical_name"], raw["entity_type"])
                 if found:
                     entity_ids.append(found["id"])
 
@@ -413,17 +409,14 @@ class NREMPhase(CognitiveProcess):
                         "WHERE ((source_entity_id = ? AND target_entity_id = ?) "
                         "   OR (source_entity_id = ? AND target_entity_id = ?)) "
                         "AND relation_type = ?",
-                        (src_id, tgt_id, tgt_id, src_id,
-                         RelationType.RELATED_TO.value),
+                        (src_id, tgt_id, tgt_id, src_id, RelationType.RELATED_TO.value),
                     )
                     if existing:
                         new_strength = min(
                             float(existing["strength"]) + HEBBIAN_ETA,
                             10.0,
                         )
-                        episodes_list = json.loads(
-                            existing["evidence_episodes"] or "[]"
-                        )
+                        episodes_list = json.loads(existing["evidence_episodes"] or "[]")
                         if ep_id not in episodes_list:
                             episodes_list.append(ep_id)
                         self.db.update(

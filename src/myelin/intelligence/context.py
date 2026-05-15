@@ -77,7 +77,9 @@ class ContextAssembler:
             querying_agent_id=agent_id,
         )
 
-        procedures = self._find_procedures(query, query_embedding, max_procedures, agent_ids=agent_ids)
+        procedures = self._find_procedures(
+            query, query_embedding, max_procedures, agent_ids=agent_ids
+        )
 
         query_entities = extract_entities_from_text(query)
         entity_context = self._build_entity_context(
@@ -121,7 +123,11 @@ class ContextAssembler:
         }
 
     def _find_procedures(
-        self, query: str, embedding: list[float] | None, limit: int, agent_ids: list[str] | None = None
+        self,
+        query: str,
+        embedding: list[float] | None,
+        limit: int,
+        agent_ids: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         matches = self.procedural.find_matching(query, embedding, limit=limit, agent_ids=agent_ids)
         results = []

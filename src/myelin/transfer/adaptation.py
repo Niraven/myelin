@@ -142,7 +142,7 @@ class StepAdaptationEngine:
 
         has_flagged = any(a.flag for a in adaptations)
         changed_count = sum(1 for a in adaptations if a.changed)
-        unchanged_count = sum(1 for a in adaptations if not a.changed and not a.flag)
+        sum(1 for a in adaptations if not a.changed and not a.flag)
 
         if has_flagged:
             discount = 0.4

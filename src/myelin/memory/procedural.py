@@ -63,8 +63,14 @@ class ProceduralMemory:
             where = f"source_agent IN ({placeholders})"
             where_params = tuple(agent_ids)
         results = self.db.hybrid_search(
-            "procedures", "procedures_fts", text_query, query_vec, limit=limit * 2,
-            embedding_col="trigger_embedding", where=where, where_params=where_params,
+            "procedures",
+            "procedures_fts",
+            text_query,
+            query_vec,
+            limit=limit * 2,
+            embedding_col="trigger_embedding",
+            where=where,
+            where_params=where_params,
         )
         filtered = [
             r

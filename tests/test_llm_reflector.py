@@ -9,8 +9,6 @@ Verifies:
 
 from __future__ import annotations
 
-from unittest.mock import patch
-
 import pytest
 
 from myelin.cognitive.llm_reflector import (
@@ -24,7 +22,6 @@ from myelin.cognitive.llm_reflector import (
 from myelin.core.database import Database
 from myelin.core.models import NodeType, SemanticNode, SourceType
 from myelin.memory.semantic import SemanticMemory
-
 
 # ── Fixtures ───────────────────────────────────────────────────────
 
@@ -62,11 +59,31 @@ def seeded_deployment_facts(reflector: LLMReflector) -> list[str]:
     return _seed_facts(
         reflector.semantic,
         [
-            ("Deployed my-app v2.1 to production successfully, all pods running", "deployment,kubectl", 0.8),
-            ("Deployed canary v2.2 to staging with 10% traffic using istio", "deployment,istio", 0.75),
-            ("Rolled back my-app v2.1 to v2.0 after crash loop detected", "deployment,rollback", 0.7),
-            ("Verified deployment health — all 6 replicas are healthy and serving traffic", "deployment,monitoring", 0.85),
-            ("Configured kubernetes ingress for my-app with TLS termination", "deployment,networking", 0.65),
+            (
+                "Deployed my-app v2.1 to production successfully, all pods running",
+                "deployment,kubectl",
+                0.8,
+            ),
+            (
+                "Deployed canary v2.2 to staging with 10% traffic using istio",
+                "deployment,istio",
+                0.75,
+            ),
+            (
+                "Rolled back my-app v2.1 to v2.0 after crash loop detected",
+                "deployment,rollback",
+                0.7,
+            ),
+            (
+                "Verified deployment health — all 6 replicas are healthy and serving traffic",
+                "deployment,monitoring",
+                0.85,
+            ),
+            (
+                "Configured kubernetes ingress for my-app with TLS termination",
+                "deployment,networking",
+                0.65,
+            ),
         ],
         domain="deployment",
     )
@@ -78,10 +95,26 @@ def seeded_testing_facts(reflector: LLMReflector) -> list[str]:
     return _seed_facts(
         reflector.semantic,
         [
-            ("Ran pytest integration test suite — 45 passed, 3 failed due to timeout issues", "testing,pytest", 0.6),
-            ("Debugged test_auth_flow failure — fixed async timeout, all tests now passing", "testing,debug", 0.7),
-            ("Ran unit tests for payment module — 22/22 passed with 95% coverage", "testing,coverage", 0.8),
-            ("Executed load test suite — 1000 req/s sustained, p99 latency 45ms under threshold", "testing,performance", 0.75),
+            (
+                "Ran pytest integration test suite — 45 passed, 3 failed due to timeout issues",
+                "testing,pytest",
+                0.6,
+            ),
+            (
+                "Debugged test_auth_flow failure — fixed async timeout, all tests now passing",
+                "testing,debug",
+                0.7,
+            ),
+            (
+                "Ran unit tests for payment module — 22/22 passed with 95% coverage",
+                "testing,coverage",
+                0.8,
+            ),
+            (
+                "Executed load test suite — 1000 req/s sustained, p99 latency 45ms under threshold",
+                "testing,performance",
+                0.75,
+            ),
         ],
         domain="testing",
     )
@@ -101,7 +134,7 @@ class TestExtractActionFromContent:
         assert "debug" in _extract_action_from_content("Debugged test_auth_flow failure")
 
     def test_fallback_first_word(self):
-        assert "someth" == _extract_action_from_content("Something happened")
+        assert _extract_action_from_content("Something happened") == "someth"
 
 
 class TestExtractEntitiesFromContent:
@@ -174,7 +207,9 @@ class TestInsightForDomain:
 
 class TestLevel1Reflection:
     async def test_builds_reflection_from_deployment_facts(
-        self, reflector: LLMReflector, seeded_deployment_facts,
+        self,
+        reflector: LLMReflector,
+        seeded_deployment_facts,
     ):
         """Should generate Level 1 reflection for deployment domain."""
         facts = reflector.semantic.get_facts(domain="deployment")
@@ -186,7 +221,9 @@ class TestLevel1Reflection:
         assert "observations" in reflection or "deploy" in reflection.lower()
 
     async def test_reflection_contains_trend(
-        self, reflector: LLMReflector, seeded_deployment_facts,
+        self,
+        reflector: LLMReflector,
+        seeded_deployment_facts,
     ):
         facts = reflector.semantic.get_facts(domain="deployment")
         reflection = reflector._build_level1_reflection("deployment", facts)
@@ -194,13 +231,19 @@ class TestLevel1Reflection:
         assert "trend" in reflection.lower()
 
     async def test_reflection_includes_entity_info(
-        self, reflector: LLMReflector, seeded_deployment_facts,
+        self,
+        reflector: LLMReflector,
+        seeded_deployment_facts,
     ):
         facts = reflector.semantic.get_facts(domain="deployment")
         reflection = reflector._build_level1_reflection("deployment", facts)
         assert reflection is not None
         # Should mention my-app or kubernetes
-        assert "entity" in reflection.lower() or "kub" in reflection.lower() or "my-app" in reflection.lower()
+        assert (
+            "entity" in reflection.lower()
+            or "kub" in reflection.lower()
+            or "my-app" in reflection.lower()
+        )
 
 
 # ── Level 2 Tests ──────────────────────────────────────────────────
@@ -208,7 +251,10 @@ class TestLevel1Reflection:
 
 class TestLevel2Reflection:
     async def test_cross_domain_linking(
-        self, reflector: LLMReflector, seeded_deployment_facts, seeded_testing_facts,
+        self,
+        reflector: LLMReflector,
+        seeded_deployment_facts,
+        seeded_testing_facts,
     ):
         """Should detect temporal precedence between domain activities."""
         domain_groups = {
@@ -220,7 +266,10 @@ class TestLevel2Reflection:
         assert len(reflections) >= 1
 
     async def test_cross_domain_contains_both_domains(
-        self, reflector: LLMReflector, seeded_deployment_facts, seeded_testing_facts,
+        self,
+        reflector: LLMReflector,
+        seeded_deployment_facts,
+        seeded_testing_facts,
     ):
         domain_groups = {
             "deployment": reflector.semantic.get_facts(domain="deployment"),
@@ -231,7 +280,9 @@ class TestLevel2Reflection:
             assert "deployment" in text or "testing" in text
 
     async def test_single_domain_returns_empty(
-        self, reflector: LLMReflector, seeded_deployment_facts,
+        self,
+        reflector: LLMReflector,
+        seeded_deployment_facts,
     ):
         domain_groups = {
             "deployment": reflector.semantic.get_facts(domain="deployment"),
@@ -245,7 +296,10 @@ class TestLevel2Reflection:
 
 class TestLevel3Reflection:
     async def test_meta_reflection_generated(
-        self, reflector: LLMReflector, seeded_deployment_facts, seeded_testing_facts,
+        self,
+        reflector: LLMReflector,
+        seeded_deployment_facts,
+        seeded_testing_facts,
     ):
         """Should generate meta-reflection when multiple domains exist."""
         domain_groups = {
@@ -258,7 +312,10 @@ class TestLevel3Reflection:
         assert "2" in meta  # Two domains
 
     async def test_meta_reflection_contains_success_rate(
-        self, reflector: LLMReflector, seeded_deployment_facts, seeded_testing_facts,
+        self,
+        reflector: LLMReflector,
+        seeded_deployment_facts,
+        seeded_testing_facts,
     ):
         domain_groups = {
             "deployment": reflector.semantic.get_facts(domain="deployment"),
@@ -274,7 +331,10 @@ class TestLevel3Reflection:
 
 class TestFullExecute:
     async def test_execute_should_run_with_recent_facts(
-        self, reflector: LLMReflector, seeded_deployment_facts, seeded_testing_facts,
+        self,
+        reflector: LLMReflector,
+        seeded_deployment_facts,
+        seeded_testing_facts,
     ):
         """Full execute should process recent facts and create reflections."""
         result = await reflector.execute()
@@ -286,7 +346,9 @@ class TestFullExecute:
         assert result["processed"] >= 9  # 5 deployment + 4 testing
 
     async def test_execute_without_enough_facts(
-        self, reflector: LLMReflector, tmp_db: Database,
+        self,
+        reflector: LLMReflector,
+        tmp_db: Database,
     ):
         """Should return early when there aren't enough recent facts."""
         # Seed just 1 fact
@@ -305,7 +367,10 @@ class TestFullExecute:
         assert result["created"] == 0
 
     async def test_execute_creates_reflection_nodes(
-        self, reflector: LLMReflector, seeded_deployment_facts, seeded_testing_facts,
+        self,
+        reflector: LLMReflector,
+        seeded_deployment_facts,
+        seeded_testing_facts,
     ):
         """Reflections should be stored as semantic nodes."""
         await reflector.execute()
@@ -317,7 +382,10 @@ class TestFullExecute:
         assert len(reflections) >= 3
 
     async def test_reflection_content_is_informative(
-        self, reflector: LLMReflector, seeded_deployment_facts, seeded_testing_facts,
+        self,
+        reflector: LLMReflector,
+        seeded_deployment_facts,
+        seeded_testing_facts,
     ):
         """Reflections should contain meaningful content, not placeholders."""
         await reflector.execute()

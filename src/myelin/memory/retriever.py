@@ -69,13 +69,17 @@ class MultiSignalRetriever:
         candidates: dict[str, dict[str, Any]] = {}
 
         if include_episodes:
-            self._add_episode_candidates(query, query_embedding, domain, candidates, limit * 3, agent_ids=agent_ids)
+            self._add_episode_candidates(
+                query, query_embedding, domain, candidates, limit * 3, agent_ids=agent_ids
+            )
 
         if include_semantic:
             self._add_semantic_candidates(query, query_embedding, domain, candidates, limit * 3)
 
         if include_procedures:
-            self._add_procedure_candidates(query, query_embedding, domain, candidates, limit * 3, agent_ids=agent_ids)
+            self._add_procedure_candidates(
+                query, query_embedding, domain, candidates, limit * 3, agent_ids=agent_ids
+            )
 
         query_entities = extract_entities_from_text(query)
         entity_boost_ids = set()
@@ -106,7 +110,11 @@ class MultiSignalRetriever:
                 + w.get("importance", 0.0) * importance_score
             )
 
-            result = {k: v for k, v in candidate.items() if not k.startswith("_") or k in ("_source_type",)}
+            result = {
+                k: v
+                for k, v in candidate.items()
+                if not k.startswith("_") or k in ("_source_type",)
+            }
             result["_composite_score"] = composite
             result["_scores"] = {
                 "text": text_score,
@@ -116,7 +124,9 @@ class MultiSignalRetriever:
                 "activation": activation_score,
                 "importance": importance_score,
             }
-            result["source_agent"] = candidate.get("agent_id") or candidate.get("source_agent", "unknown")
+            result["source_agent"] = candidate.get("agent_id") or candidate.get(
+                "source_agent", "unknown"
+            )
 
             # Cross-agent confidence discount
             if querying_agent_id:
@@ -151,7 +161,9 @@ class MultiSignalRetriever:
             where = f"agent_id IN ({placeholders})"
             where_params = tuple(agent_ids)
 
-        fts = self.db.fts_search("episodes", "episodes_fts", query, limit=limit, where=where, where_params=where_params)
+        fts = self.db.fts_search(
+            "episodes", "episodes_fts", query, limit=limit, where=where, where_params=where_params
+        )
         for i, row in enumerate(fts):
             rid = row["id"]
             if rid not in candidates:
@@ -160,7 +172,14 @@ class MultiSignalRetriever:
             candidates[rid]["_text_score"] = 1.0 - (i / max(len(fts), 1))
 
         if embedding and self.db.vec_available:
-            vec = self.db.vec_search("episodes", "embedding", embedding, limit=limit, where=where, where_params=where_params)
+            vec = self.db.vec_search(
+                "episodes",
+                "embedding",
+                embedding,
+                limit=limit,
+                where=where,
+                where_params=where_params,
+            )
             for i, row in enumerate(vec):
                 rid = row["id"]
                 if rid not in candidates:
@@ -200,7 +219,14 @@ class MultiSignalRetriever:
             where = f"source_agent IN ({placeholders})"
             where_params = tuple(agent_ids)
 
-        fts = self.db.fts_search("procedures", "procedures_fts", query, limit=limit, where=where, where_params=where_params)
+        fts = self.db.fts_search(
+            "procedures",
+            "procedures_fts",
+            query,
+            limit=limit,
+            where=where,
+            where_params=where_params,
+        )
         for i, row in enumerate(fts):
             rid = row["id"]
             if rid not in candidates:

@@ -1,26 +1,24 @@
 """Tests for PredictionLearner: forward model, TD-error, surprise, confidence, priority."""
 
 import json
-import time
 
 import pytest
 
 from myelin.cognitive.prediction_learner import (
     PredictionLearner,
-    compute_td_error,
-    compute_surprise,
     compute_priority_score,
+    compute_surprise,
+    compute_td_error,
     td_modulated_learning_rate,
 )
 from myelin.core.models import (
+    ActionType,
+    Episode,
     Procedure,
     ProcedureStatus,
     ProcedureStep,
     StepType,
-    Episode,
-    ActionType,
 )
-from myelin.memory.procedural import ProceduralMemory
 
 
 def _make_procedure(
@@ -52,23 +50,26 @@ def _make_episode(db, agent_id="agent-1", session_id="sess-1", importance=0.7):
         content_text="testing prediction learner",
         domain="deployment",
     )
-    db.insert("episodes", {
-        "id": ep.id,
-        "agent_id": ep.agent_id,
-        "session_id": ep.session_id,
-        "action": ep.action,
-        "action_type": ep.action_type.value,
-        "content_text": ep.content_text,
-        "success": int(ep.success),
-        "importance_score": importance,
-        "priority_score": 0.5,
-        "tags": json.dumps(ep.tags),
-        "created_at": ep.created_at,
-        "timestamp": ep.timestamp,
-        "access_count": ep.access_count,
-        "access_times": json.dumps(ep.access_times),
-        "last_accessed": ep.last_accessed,
-    })
+    db.insert(
+        "episodes",
+        {
+            "id": ep.id,
+            "agent_id": ep.agent_id,
+            "session_id": ep.session_id,
+            "action": ep.action,
+            "action_type": ep.action_type.value,
+            "content_text": ep.content_text,
+            "success": int(ep.success),
+            "importance_score": importance,
+            "priority_score": 0.5,
+            "tags": json.dumps(ep.tags),
+            "created_at": ep.created_at,
+            "timestamp": ep.timestamp,
+            "access_count": ep.access_count,
+            "access_times": json.dumps(ep.access_times),
+            "last_accessed": ep.last_accessed,
+        },
+    )
     return ep.id
 
 
@@ -243,7 +244,7 @@ class TestPredictionLearner:
         # Predict success (confidence 0.5 → predicted_success=0)
         pred = learner.predict_outcome(proc_id)
         learner.record_outcome(pred["prediction_id"], actual_success=True)
-        updated = procedural.get(proc_id)
+        procedural.get(proc_id)
 
         # Now test with higher TD (second prediction)
         # After one success, confidence is higher

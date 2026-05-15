@@ -16,16 +16,15 @@ from __future__ import annotations
 
 import json
 import math
-import time
 from datetime import datetime, timedelta
 from typing import Any
 from uuid import uuid4
 
 from ..core.database import Database
-from ..core.models import ProcessName, UpdateMode
+from ..core.models import ProcessName
 from ..memory.episodic import EpisodicMemory
-from ..memory.semantic import SemanticMemory
 from ..memory.procedural import ProceduralMemory
+from ..memory.semantic import SemanticMemory
 from .base import CognitiveProcess
 
 # ── Constants ──────────────────────────────────────────────────
@@ -152,14 +151,12 @@ class ReconsolidationEngine(CognitiveProcess):
         modified = 0
 
         episode_expired = self.db.execute(
-            "UPDATE episodes SET labile_until = NULL "
-            "WHERE labile_until < datetime('now')",
+            "UPDATE episodes SET labile_until = NULL WHERE labile_until < datetime('now')",
         )
         processed += episode_expired.rowcount
 
         semantic_expired = self.db.execute(
-            "UPDATE semantic_nodes SET labile_until = NULL "
-            "WHERE labile_until < datetime('now')",
+            "UPDATE semantic_nodes SET labile_until = NULL WHERE labile_until < datetime('now')",
         )
         processed += semantic_expired.rowcount
 
@@ -257,12 +254,14 @@ class ReconsolidationEngine(CognitiveProcess):
                 (limit,),
             )
             for ep in episodes:
-                results.append({
-                    "memory_type": "episode",
-                    "memory_id": ep["id"],
-                    "labile_until": ep.get("labile_until"),
-                    "data": ep,
-                })
+                results.append(
+                    {
+                        "memory_type": "episode",
+                        "memory_id": ep["id"],
+                        "labile_until": ep.get("labile_until"),
+                        "data": ep,
+                    }
+                )
 
         if memory_type is None or memory_type == "semantic_node":
             nodes = self.db.fetchall(
@@ -273,12 +272,14 @@ class ReconsolidationEngine(CognitiveProcess):
                 (limit,),
             )
             for node in nodes:
-                results.append({
-                    "memory_type": "semantic_node",
-                    "memory_id": node["id"],
-                    "labile_until": node.get("labile_until"),
-                    "data": node,
-                })
+                results.append(
+                    {
+                        "memory_type": "semantic_node",
+                        "memory_id": node["id"],
+                        "labile_until": node.get("labile_until"),
+                        "data": node,
+                    }
+                )
 
         return results
 
@@ -345,7 +346,8 @@ class ReconsolidationEngine(CognitiveProcess):
     # ── Stability Protector ────────────────────────────────────
 
     def stability_protector(
-        self, memory_row: dict[str, Any],
+        self,
+        memory_row: dict[str, Any],
     ) -> tuple[float, float, float]:
         """Determine if a memory is stable enough to resist update.
 
@@ -442,20 +444,23 @@ class ReconsolidationEngine(CognitiveProcess):
     ) -> str:
         """Record a reconsolidation event in the reconsolidation_log table."""
         log_id = _new_id()
-        self.db.insert("reconsolidation_log", {
-            "id": log_id,
-            "memory_type": memory_type,
-            "memory_id": memory_id,
-            "pe_raw": pe_raw,
-            "pe_eff": pe_eff,
-            "update_mode": update_mode,
-            "labile_duration_minutes": labile_duration_minutes,
-            "snapshot_before": json.dumps(snapshot_before) if snapshot_before else None,
-            "snapshot_after": json.dumps(snapshot_after) if snapshot_after else None,
-            "trigger_episode_id": trigger_episode_id,
-            "agent_id": agent_id,
-            "timestamp": _now_iso(),
-        })
+        self.db.insert(
+            "reconsolidation_log",
+            {
+                "id": log_id,
+                "memory_type": memory_type,
+                "memory_id": memory_id,
+                "pe_raw": pe_raw,
+                "pe_eff": pe_eff,
+                "update_mode": update_mode,
+                "labile_duration_minutes": labile_duration_minutes,
+                "snapshot_before": json.dumps(snapshot_before) if snapshot_before else None,
+                "snapshot_after": json.dumps(snapshot_after) if snapshot_after else None,
+                "trigger_episode_id": trigger_episode_id,
+                "agent_id": agent_id,
+                "timestamp": _now_iso(),
+            },
+        )
         return log_id
 
     # ── Core Reconsolidation Logic ─────────────────────────────
@@ -508,7 +513,8 @@ class ReconsolidationEngine(CognitiveProcess):
 
         # 2. Fetch existing memory and compute PE
         memory_row = self.db.fetchone(
-            f"SELECT * FROM {table} WHERE id = ?", (memory_id,),
+            f"SELECT * FROM {table} WHERE id = ?",
+            (memory_id,),
         )
         if not memory_row:
             return {"status": "error", "message": "Memory not found"}
@@ -537,7 +543,8 @@ class ReconsolidationEngine(CognitiveProcess):
 
         # Compute prediction error
         pe_raw, pe_eff = self.compute_pe(
-            existing_content_full, new_content,
+            existing_content_full,
+            new_content,
             action_type=action_type,
             success=success,
             ne=ne,
@@ -561,9 +568,7 @@ class ReconsolidationEngine(CognitiveProcess):
         # Confirmed mode always applies (non-destructive confidence boost)
         # Other modes respect stability protection
         should_update = (
-            update_mode == "confirmed"
-            or pe_eff > stab_threshold
-            or update_mode == "new_episode"
+            update_mode == "confirmed" or pe_eff > stab_threshold or update_mode == "new_episode"
         )
 
         if should_update:
@@ -576,14 +581,16 @@ class ReconsolidationEngine(CognitiveProcess):
                     old_conf = memory_row.get("confidence", 0.5) or 0.5
                     new_confidence = min(1.0, old_conf + 0.1)
                     self.db.update(
-                        "semantic_nodes", memory_id,
+                        "semantic_nodes",
+                        memory_id,
                         {"confidence": new_confidence},
                     )
                 elif memory_type == "episode":
                     old_imp = memory_row.get("importance_score", 0.5) or 0.5
                     new_imp = min(1.0, old_imp + 0.05)
                     self.db.update(
-                        "episodes", memory_id,
+                        "episodes",
+                        memory_id,
                         {"importance_score": new_imp},
                     )
 
@@ -596,7 +603,8 @@ class ReconsolidationEngine(CognitiveProcess):
                     old_conf = memory_row.get("confidence", 0.5) or 0.5
                     new_confidence = self.contradiction_penalty(content_type, old_conf)
                     self.db.update(
-                        "semantic_nodes", memory_id,
+                        "semantic_nodes",
+                        memory_id,
                         {"confidence": new_confidence},
                     )
 
@@ -609,14 +617,18 @@ class ReconsolidationEngine(CognitiveProcess):
                     old_conf = memory_row.get("confidence", 0.5) or 0.5
                     new_confidence = self.contradiction_penalty(content_type, old_conf)
                     self.db.update(
-                        "semantic_nodes", memory_id,
+                        "semantic_nodes",
+                        memory_id,
                         {"confidence": new_confidence},
                     )
 
             elif update_mode == "new_episode":
                 # Create a separate new memory entry
                 new_id = self._create_new_from_evidence(
-                    memory_type, memory_row, new_content, agent_id,
+                    memory_type,
+                    memory_row,
+                    new_content,
+                    agent_id,
                 )
                 snapshot_after = {"new_memory_id": new_id}
 
@@ -688,7 +700,8 @@ class ReconsolidationEngine(CognitiveProcess):
             existing_content = memory_row.get("content", "") or ""
             merged = existing_content + " | " + new_content
             self.db.update(
-                "semantic_nodes", memory_id,
+                "semantic_nodes",
+                memory_id,
                 {
                     "content": merged,
                     "updated_at": _now_iso(),
@@ -698,7 +711,8 @@ class ReconsolidationEngine(CognitiveProcess):
         elif memory_type == "procedure":
             existing_desc = memory_row.get("description", "") or ""
             self.db.update(
-                "procedures", memory_id,
+                "procedures",
+                memory_id,
                 {
                     "description": existing_desc + " | " + new_content,
                     "updated_at": _now_iso(),
@@ -717,7 +731,8 @@ class ReconsolidationEngine(CognitiveProcess):
             existing_text = memory_row.get("content_text", "") or ""
             merged = f"[Integrated] {new_content} | {existing_text}"
             self.db.update(
-                "episodes", memory_id,
+                "episodes",
+                memory_id,
                 {
                     "content_text": merged,
                     "importance_score": min(
@@ -733,7 +748,8 @@ class ReconsolidationEngine(CognitiveProcess):
             old_conf = memory_row.get("confidence", 0.5) or 0.5
             new_conf = max(0.1, old_conf * 0.85)
             self.db.update(
-                "semantic_nodes", memory_id,
+                "semantic_nodes",
+                memory_id,
                 {
                     "content": merged,
                     "confidence": new_conf,
@@ -744,7 +760,8 @@ class ReconsolidationEngine(CognitiveProcess):
         elif memory_type == "procedure":
             existing_desc = memory_row.get("description", "") or ""
             self.db.update(
-                "procedures", memory_id,
+                "procedures",
+                memory_id,
                 {
                     "description": f"[Integrated] {new_content} | {existing_desc}",
                     "modify_count": (memory_row.get("modify_count", 0) or 0) + 1,
@@ -764,6 +781,7 @@ class ReconsolidationEngine(CognitiveProcess):
 
         if memory_type == "episode":
             from ..core.models import ActionType, Episode
+
             ep = Episode(
                 id=new_id,
                 agent_id=memory_row.get("agent_id", agent_id or "unknown"),
@@ -777,6 +795,7 @@ class ReconsolidationEngine(CognitiveProcess):
 
         elif memory_type == "semantic_node":
             from ..core.models import NodeType, SemanticNode, SourceType
+
             node = SemanticNode(
                 id=new_id,
                 node_type=NodeType.FACT,
@@ -800,7 +819,8 @@ class ReconsolidationEngine(CognitiveProcess):
         """Update prediction error tracking fields on the memory."""
         if memory_type == "semantic_node":
             self.db.update(
-                "semantic_nodes", memory_id,
+                "semantic_nodes",
+                memory_id,
                 {
                     "prediction_error": pe_raw,
                     "last_pe_raw": pe_raw,
@@ -809,7 +829,8 @@ class ReconsolidationEngine(CognitiveProcess):
             )
         elif memory_type == "episode":
             self.db.update(
-                "episodes", memory_id,
+                "episodes",
+                memory_id,
                 {
                     "surprise_score": pe_raw,
                     "td_error": pe_raw,
@@ -824,7 +845,8 @@ class ReconsolidationEngine(CognitiveProcess):
                 old_sum = row["total_pe_sum"] or 0.0
                 old_count = row["pe_count"] or 0
                 self.db.update(
-                    "procedures", memory_id,
+                    "procedures",
+                    memory_id,
                     {
                         "prediction_error": pe_raw,
                         "surprise_score": pe_raw,
@@ -869,7 +891,7 @@ class ReconsolidationEngine(CognitiveProcess):
                 "result": {
                     "status": "error",
                     "message": f"Invalid memory_type '{memory_type}'. "
-                               f"Must be 'episode', 'semantic_node', or 'procedure'.",
+                    f"Must be 'episode', 'semantic_node', or 'procedure'.",
                 },
             }
 
@@ -893,7 +915,8 @@ class ReconsolidationEngine(CognitiveProcess):
             }
 
         exists = self.db.fetchone(
-            f"SELECT id FROM {table} WHERE id = ?", (memory_id,),
+            f"SELECT id FROM {table} WHERE id = ?",
+            (memory_id,),
         )
         if not exists:
             return {

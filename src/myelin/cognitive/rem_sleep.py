@@ -22,17 +22,15 @@ cycle. It performs:
 from __future__ import annotations
 
 import json
-import math
 import random
 import time
-from collections import defaultdict, deque
-from datetime import datetime, timedelta
+from collections import deque
 from typing import Any
 from uuid import uuid4
 
 from ..core.database import Database
 from ..core.models import NodeType, ProcessName, RelationType, SemanticNode, SourceType
-from ..knowledge.entities import EntityStore, extract_entities_from_text
+from ..knowledge.entities import EntityStore
 from ..knowledge.graph import KnowledgeGraph
 from ..knowledge.temporal import TemporalIndex
 from .base import CognitiveProcess
@@ -135,7 +133,7 @@ class REMPhase(CognitiveProcess):
             entity_id = start_entity["id"]
             current_id = entity_id
 
-            for step in range(DREAM_WALK_STEPS):
+            for _step in range(DREAM_WALK_STEPS):
                 # Get neighbors (both directions)
                 neighbors = self.graph.get_neighbors(
                     entity_id=current_id,
@@ -174,9 +172,7 @@ class REMPhase(CognitiveProcess):
                     # Relationship exists — boost if weak
                     current_strength = float(existing_rel["strength"])
                     if current_strength < DREAM_BOOST_THRESHOLD:
-                        new_strength = min(
-                            current_strength + DREAM_BOOST_DELTA, 10.0
-                        )
+                        new_strength = min(current_strength + DREAM_BOOST_DELTA, 10.0)
                         self.db.update(
                             "relationships",
                             existing_rel["id"],
@@ -194,8 +190,13 @@ class REMPhase(CognitiveProcess):
                         "WHERE ((source_entity_id = ? AND target_entity_id = ?) "
                         "   OR (source_entity_id = ? AND target_entity_id = ?)) "
                         "AND relation_type != ?",
-                        (entity_id, neighbor_id, neighbor_id, entity_id,
-                         RelationType.DREAMED_CONNECTION.value),
+                        (
+                            entity_id,
+                            neighbor_id,
+                            neighbor_id,
+                            entity_id,
+                            RelationType.DREAMED_CONNECTION.value,
+                        ),
                     )
                     if not any_rel:
                         self.graph.add_relationship(
@@ -224,8 +225,7 @@ class REMPhase(CognitiveProcess):
           4. Store as semantic_node with type='DREAM'
         """
         failed_eps = self.db.fetchall(
-            "SELECT * FROM episodes WHERE success = 0 "
-            "ORDER BY timestamp DESC LIMIT ?",
+            "SELECT * FROM episodes WHERE success = 0 ORDER BY timestamp DESC LIMIT ?",
             (COUNTERFACTUAL_BATCH,),
         )
 
@@ -247,14 +247,16 @@ class REMPhase(CognitiveProcess):
             # Store as a semantic dream node
             node = SemanticNode(
                 node_type=NodeType.DREAM,
-                content=json.dumps({
-                    "type": "counterfactual_dream",
-                    "original_episode_id": ep_id,
-                    "original_action": action,
-                    "alternative": alternative,
-                    "domain": domain,
-                    "generated_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
-                }),
+                content=json.dumps(
+                    {
+                        "type": "counterfactual_dream",
+                        "original_episode_id": ep_id,
+                        "original_action": action,
+                        "alternative": alternative,
+                        "domain": domain,
+                        "generated_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                    }
+                ),
                 source_type=SourceType.OBSERVATION,
                 source_ids=[ep_id],
                 domain=domain,
@@ -459,16 +461,12 @@ class REMPhase(CognitiveProcess):
 
         Returns (tag_scores_computed, episodes_selected).
         """
-        candidates = self.db.fetchall(
-            "SELECT * FROM episodes ORDER BY timestamp DESC LIMIT 200"
-        )
+        candidates = self.db.fetchall("SELECT * FROM episodes ORDER BY timestamp DESC LIMIT 200")
         if not candidates:
             return 0, 0
 
         # Find max replay count for normalization
-        max_replay_row = self.db.fetchone(
-            "SELECT MAX(replay_count) as max_rp FROM episodes"
-        )
+        max_replay_row = self.db.fetchone("SELECT MAX(replay_count) as max_rp FROM episodes")
         max_replay = float(max_replay_row["max_rp"]) if max_replay_row else 1.0
         if max_replay <= 0:
             max_replay = 1.0
@@ -493,11 +491,7 @@ class REMPhase(CognitiveProcess):
             n_e = max(0.0, min(1.0, n_e))
 
             # TAG score
-            tag = (
-                TAG_TD_WEIGHT * td_error
-                + TAG_R_WEIGHT * r_e
-                + TAG_N_WEIGHT * n_e
-            )
+            tag = TAG_TD_WEIGHT * td_error + TAG_R_WEIGHT * r_e + TAG_N_WEIGHT * n_e
             tag = max(0.0, min(1.0, tag))
 
             # Persist TAG score to episode
@@ -514,7 +508,7 @@ class REMPhase(CognitiveProcess):
         selected = tag_scores[:REM_SAMPLE_LIMIT]
 
         # Mark selected episodes for REM processing (increment replay_count)
-        for ep_id, tag, ep in selected:
+        for ep_id, _tag, ep in selected:
             current_count = int(ep.get("replay_count", 0))
             self.db.update(
                 "episodes",

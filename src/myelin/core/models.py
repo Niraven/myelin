@@ -319,6 +319,7 @@ class CuriosityTopic(BaseModel):
     Represents a specific target (entity, domain, procedure, or relationship)
     that the system knows little about and could benefit from exploring.
     """
+
     gap_type: str  # 'entity_undermentions', 'domain_low_procedures', etc.
     target_id: str
     target_name: str
@@ -336,6 +337,7 @@ class CuriosityTopic(BaseModel):
 
 class CuriousGoalModel(BaseModel):
     """Extended learning goal generated from a curiosity topic."""
+
     id: str = Field(default_factory=_new_id)
     domain: str | None = None
     goal: str

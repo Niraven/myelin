@@ -8,25 +8,21 @@ from __future__ import annotations
 import json
 import time
 from datetime import datetime, timedelta
-from typing import Any
 from uuid import uuid4
 
 import pytest
 
-from myelin.core.database import Database
-from myelin.core.models import SchemaModel, SchemaStatus
-from myelin.core.schema import SCHEMA_SQL
 from myelin.cognitive.schema_learner import (
+    ARCHIVE_DAYS,
+    HYPOTHESIS_CONFIDENCE,
     SchemaLearner,
-    jaccard_similarity,
     extract_action_type,
     extract_entities_from_content,
-    JACCARD_THRESHOLD,
-    MIN_CLUSTER_SIZE,
-    HYPOTHESIS_CONFIDENCE,
-    ARCHIVE_DAYS,
+    jaccard_similarity,
 )
-from myelin.core.models import NodeType, SourceType
+from myelin.core.database import Database
+from myelin.core.models import SchemaStatus
+from myelin.core.schema import SCHEMA_SQL
 
 
 def _new_id() -> str:
@@ -274,7 +270,7 @@ async def test_merge_with_existing_updates_confidence(tmp_db, learner):
     _add_semantic_node(tmp_db, content="running deployment on production")
     _add_semantic_node(tmp_db, content="deploying to production")
     _add_semantic_node(tmp_db, content="deployment scripts running")
-    existing_id = _add_schema(
+    _add_schema(
         tmp_db,
         name="running_testing",
         behavioral_pattern="When performing testing tasks: running is typically followed by deploying",
@@ -285,13 +281,13 @@ async def test_merge_with_existing_updates_confidence(tmp_db, learner):
     )
 
     # Induce again with new nodes
-    new_id_1 = _add_semantic_node(tmp_db, content="running deployment on production server")
-    new_id_2 = _add_semantic_node(tmp_db, content="deploying to production environment")
-    new_id_3 = _add_semantic_node(tmp_db, content="deployment scripts running on server")
+    _add_semantic_node(tmp_db, content="running deployment on production server")
+    _add_semantic_node(tmp_db, content="deploying to production environment")
+    _add_semantic_node(tmp_db, content="deployment scripts running on server")
 
     learner._get_domains_with_min_nodes()  # populate cache
     nodes = learner._get_nodes_for_domain("testing")
-    clusters = learner._cluster_nodes(nodes)
+    learner._cluster_nodes(nodes)
 
     # Should merge with existing
     result = await learner.execute()

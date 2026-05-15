@@ -20,7 +20,13 @@ from ..knowledge.graph import KnowledgeGraph
 
 def _safe_name(raw: str) -> str:
     """Sanitize a name for Mermaid node labels (no special chars)."""
-    return raw.replace('"', "'").replace("[", "(").replace("]", ")").replace("{", "(").replace("}", ")")
+    return (
+        raw.replace('"', "'")
+        .replace("[", "(")
+        .replace("]", ")")
+        .replace("{", "(")
+        .replace("}", ")")
+    )
 
 
 class Visualizer:
@@ -123,12 +129,14 @@ class Visualizer:
         src = str(row["source_entity_id"])
         tgt = str(row["target_entity_id"])
         if src in nodes and tgt in nodes:
-            edges.append({
-                "source_id": src,
-                "target_id": tgt,
-                "relation_type": row.get("relation_type", "related_to"),
-                "strength": float(row.get("strength", 1.0)),
-            })
+            edges.append(
+                {
+                    "source_id": src,
+                    "target_id": tgt,
+                    "relation_type": row.get("relation_type", "related_to"),
+                    "strength": float(row.get("strength", 1.0)),
+                }
+            )
 
     # ── mermaid rendering ──────────────────────────────────────
 

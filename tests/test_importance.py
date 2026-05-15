@@ -1,13 +1,13 @@
 import os
 import unittest
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from myelin.cognitive.importance import score_clusters, score_episodes, temporal_decay
+from myelin.cognitive.importance import score_clusters, temporal_decay
 
 
 class ImportanceScoringTests(unittest.TestCase):
     def test_default_scores_are_frequency_only(self):
-        now = datetime(2026, 1, 1, tzinfo=timezone.utc).timestamp()
+        now = datetime(2026, 1, 1, tzinfo=UTC).timestamp()
         episodes = [
             {"cluster_id": "alpha", "success": True, "timestamp": now - 10},
             {"cluster_id": "alpha", "success": True, "timestamp": now - 20},
@@ -18,7 +18,7 @@ class ImportanceScoringTests(unittest.TestCase):
         self.assertEqual(scores, {"alpha": 2.0, "beta": 1.0})
 
     def test_configurable_weights_include_consequence(self):
-        now = datetime(2026, 1, 1, tzinfo=timezone.utc).timestamp()
+        now = datetime(2026, 1, 1, tzinfo=UTC).timestamp()
         episodes = [
             {"cluster_id": "low", "success": False, "timestamp": now - 60},
             {"cluster_id": "low", "success": False, "timestamp": now - 120},
@@ -36,7 +36,7 @@ class ImportanceScoringTests(unittest.TestCase):
         self.assertGreater(scores["high"], scores["low"])
 
     def test_recency_controls_but_frequency_only_is_unchanged(self):
-        now = datetime(2026, 1, 1, tzinfo=timezone.utc).timestamp()
+        now = datetime(2026, 1, 1, tzinfo=UTC).timestamp()
         episodes = [
             {"cluster_id": "fresh", "success": True, "timestamp": now - 100},
             {"cluster_id": "stale", "success": True, "timestamp": now - 7 * 24 * 3600},
@@ -54,10 +54,13 @@ class ImportanceScoringTests(unittest.TestCase):
         now = 11.0
         last_seen = 1.0
         # Half-life of 10 seconds => 10s old should decay to 0.5 exactly.
-        self.assertAlmostEqual(temporal_decay(last_seen_timestamp=last_seen, now=now, half_life_seconds=10), 2 ** (-(10 / 10)))
+        self.assertAlmostEqual(
+            temporal_decay(last_seen_timestamp=last_seen, now=now, half_life_seconds=10),
+            2 ** (-(10 / 10)),
+        )
 
     def test_env_weight_override(self):
-        now = datetime(2026, 1, 1, tzinfo=timezone.utc).timestamp()
+        now = datetime(2026, 1, 1, tzinfo=UTC).timestamp()
         episodes = [
             {"cluster_id": "high", "success": True, "timestamp": now - 100},
             {"cluster_id": "low", "success": False, "timestamp": now - 100},

@@ -14,9 +14,10 @@ from __future__ import annotations
 import json
 import math
 import os
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Any, Dict, Iterable, Mapping, Optional, Sequence
+from datetime import UTC, datetime
+from typing import Any
 
 from .reflector import build_cluster_stats
 
@@ -30,7 +31,9 @@ class ImportanceWeights:
     recency: float = 0.0
 
     @classmethod
-    def from_mapping(cls, values: Mapping[str, float] | "ImportanceWeights" | None) -> "ImportanceWeights":
+    def from_mapping(
+        cls, values: Mapping[str, float] | ImportanceWeights | None
+    ) -> ImportanceWeights:
         """Build weights from a mapping or environment fallbacks."""
         if isinstance(values, ImportanceWeights):
             return values
@@ -67,7 +70,7 @@ class ImportanceWeights:
             recency=float(final_values.get("recency", values.get("recency", 0.0))),
         )
 
-    def normalized(self) -> "ImportanceWeights":
+    def normalized(self) -> ImportanceWeights:
         """Normalize weights to sum to 1 while keeping all-zero semantics stable."""
         total = self.frequency + self.consequence + self.recency
         if total <= 0:
@@ -82,7 +85,12 @@ class ImportanceWeights:
         return self.frequency > 0 and self.consequence == 0 and self.recency == 0
 
 
-def temporal_decay(last_seen_timestamp: float, now: Optional[float] = None, *, half_life_seconds: float = 7 * 24 * 3600) -> float:
+def temporal_decay(
+    last_seen_timestamp: float,
+    now: float | None = None,
+    *,
+    half_life_seconds: float = 7 * 24 * 3600,
+) -> float:
     """Exponential temporal decay based on how long ago a cluster was last seen.
 
     decay = 2 ^ (-age / half_life)
@@ -91,7 +99,7 @@ def temporal_decay(last_seen_timestamp: float, now: Optional[float] = None, *, h
         return 0.0
 
     if now is None:
-        now = datetime.now(timezone.utc).timestamp()
+        now = datetime.now(UTC).timestamp()
 
     age = max(0.0, now - float(last_seen_timestamp))
     if age <= 0:
@@ -117,10 +125,10 @@ def score_clusters(
     episodes: Iterable[Mapping[str, Any]],
     *,
     weights: Mapping[str, float] | ImportanceWeights | None = None,
-    now: Optional[float] = None,
+    now: float | None = None,
     half_life_seconds: float = 7 * 24 * 3600,
     use_normalized_default: bool = False,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """Compute a per-cluster importance score.
 
     Returns
@@ -143,14 +151,17 @@ def score_clusters(
 
     frequencies = [stats.frequency for stats in metrics.values()]
     consequences = [stats.success_rate for stats in metrics.values()]
-    recencies = [temporal_decay(stats.last_seen_ts, now=now, half_life_seconds=half_life_seconds) for stats in metrics.values()]
+    recencies = [
+        temporal_decay(stats.last_seen_ts, now=now, half_life_seconds=half_life_seconds)
+        for stats in metrics.values()
+    ]
 
     norm_frequency = _normalize(frequencies)
     norm_consequence = _normalize(consequences)
     norm_recency = _normalize(recencies)
 
-    scores: Dict[str, float] = {}
-    for idx, (cluster_id, stats) in enumerate(metrics.items()):
+    scores: dict[str, float] = {}
+    for idx, (cluster_id, _stats) in enumerate(metrics.items()):
         score = (
             normalized_weights.frequency * norm_frequency[idx]
             + normalized_weights.consequence * norm_consequence[idx]
@@ -165,10 +176,10 @@ def rank_clusters(
     episodes: Iterable[Mapping[str, Any]],
     *,
     weights: Mapping[str, float] | ImportanceWeights | None = None,
-    now: Optional[float] = None,
+    now: float | None = None,
     half_life_seconds: float = 7 * 24 * 3600,
     descending: bool = True,
-    limit: Optional[int] = None,
+    limit: int | None = None,
     use_normalized_default: bool = False,
 ) -> list[tuple[str, float]]:
     """Return clusters sorted by computed importance."""
@@ -190,7 +201,7 @@ def score_episodes(
     episodes: Iterable[Mapping[str, Any]],
     *,
     weights: Mapping[str, float] | ImportanceWeights | None = None,
-    now: Optional[float] = None,
+    now: float | None = None,
     half_life_seconds: float = 7 * 24 * 3600,
     use_normalized_default: bool = False,
 ) -> list[tuple[str, float]]:

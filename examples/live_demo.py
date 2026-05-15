@@ -7,10 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-import sys
-import tempfile
 import time
-from pathlib import Path
 
 from myelin.core.database import Database
 from myelin.memory.embedding import NoOpEmbedding
@@ -111,7 +108,7 @@ async def run_demo() -> None:
     section_start = time.perf_counter()
     print(f"\n{emoji('💤')} Phase 2: Sleep consolidation...")
     sleep_result = await handlers.trigger_sleep()
-    print(f"   ✅ Entities extracted, relationships inferred, procedures promoted")
+    print("   ✅ Entities extracted, relationships inferred, procedures promoted")
     for key in ("entities_extracted", "relationships_created", "entities_merged", "promoter"):
         val = sleep_result.get(key, sleep_result.get("created", 0))
         if isinstance(val, dict):
@@ -132,7 +129,7 @@ async def run_demo() -> None:
         print(f"   ✅ Found: {proc['name']}")
         print(f"      Confidence: {proc['confidence']:.0%}")
         print(f"      Trust: {proc['trust_level']}")
-        print(f"      Steps:")
+        print("      Steps:")
         for i, step in enumerate(proc["steps"], 1):
             desc = step["description"] if isinstance(step, dict) else str(step)
             print(f"         {i}. {desc}")
@@ -151,9 +148,13 @@ async def run_demo() -> None:
     ]
     if graph.get("neighbors"):
         for n in graph["neighbors"][:6]:
-            boxes.append(f"      ● {n['name']} [{n['type']}]  ─{n['relation']}→  strength={n['strength']:.1f}")
+            boxes.append(
+                f"      ● {n['name']} [{n['type']}]  ─{n['relation']}→  strength={n['strength']:.1f}"
+            )
     if graph.get("subgraph"):
-        boxes.append(f"      Subgraph: {graph['subgraph']['node_count']} nodes, {graph['subgraph']['edge_count']} edges")
+        boxes.append(
+            f"      Subgraph: {graph['subgraph']['node_count']} nodes, {graph['subgraph']['edge_count']} edges"
+        )
     print("\n".join(boxes))
     print(f"   ⏱️  {time.perf_counter() - section_start:.2f}s")
 
@@ -163,6 +164,7 @@ async def run_demo() -> None:
 
     # Register agent B with some tool overlap
     from myelin.transfer.profiling import AgentProfiler
+
     profiler = AgentProfiler(db)
     profiler.get_or_create_profile(AGENT_B)
     for tool in ("git", "docker", "kubectl", "python"):
@@ -204,7 +206,11 @@ async def run_demo() -> None:
         profile = profiler.get(agent_id)
         toolset = profiler.get_toolset(agent_id, min_usage=1)
         if profile:
-            tools_used = json.loads(profile["tools"]) if isinstance(profile["tools"], str) else profile["tools"]
+            tools_used = (
+                json.loads(profile["tools"])
+                if isinstance(profile["tools"], str)
+                else profile["tools"]
+            )
             print(f"   🤖 {agent_id}")
             print(f"      Tools: {', '.join(sorted(tools_used)) if tools_used else '(none)'}")
             print(f"      Tool usage: {len(toolset)} tools tracked")
@@ -219,7 +225,9 @@ async def run_demo() -> None:
     print(f"║  ✅  Demo complete in {total_time:.1f}s              ║")
     print("╠══════════════════════════════════════════════════╣")
     print(f"║  Episodes:      {status['episodes']:>4}                        ║")
-    print(f"║  Procedures:    {status['procedures']['total']:>4} ({status['procedures']['active']} active)        ║")
+    print(
+        f"║  Procedures:    {status['procedures']['total']:>4} ({status['procedures']['active']} active)        ║"
+    )
     print(f"║  Entities:      {status['entities']:>4}                        ║")
     print(f"║  Relationships: {status['relationships']:>4}                        ║")
     print(f"║  Temporal:      {status['temporal_states']:>4}                        ║")

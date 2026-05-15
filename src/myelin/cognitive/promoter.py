@@ -102,6 +102,7 @@ class Promoter(CognitiveProcess):
                     if created:
                         try:
                             import datetime
+
                             dt = datetime.datetime.fromisoformat(created)
                             all_times.append(dt.timestamp())
                         except (ValueError, TypeError):
