@@ -14,7 +14,7 @@
         overflow: hidden;
       }
 
-      [data-composition-id="myelin-launch"] {
+      #myelin-launch {
         position: relative;
         width: 1920px;
         height: 1080px;
@@ -216,7 +216,14 @@
     </style>
   </head>
   <body>
-    <div data-composition-id="myelin-launch" data-width="1920" data-height="1080">
+    <div
+      id="myelin-launch"
+      data-composition-id="myelin-launch"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="18"
+    >
       <div class="frame"></div>
       <div class="meander top"></div>
       <div class="meander bottom"></div>
@@ -310,4 +317,3 @@
     </div>
   </body>
 </html>
-

@@ -77,6 +77,21 @@ Use `assets/brand/social-preview.png` for the repository social preview. It uses
 
 Use `assets/hyperframes/myelin-launch/` as the source for a short launch video.
 
+Rendered assets:
+
+- Video: `assets/hyperframes/myelin-launch/renders/myelin-launch.mp4`
+- Opening slide: `assets/brand/myelin-launch-slide.png`
+- Closing slide: `assets/brand/myelin-launch-close.png`
+
+Validation commands:
+
+```bash
+cd assets/hyperframes/myelin-launch
+npx hyperframes lint --verbose
+npx hyperframes inspect --samples 8 --json
+npx hyperframes render --output renders/myelin-launch.mp4 --quality draft --fps 30
+```
+
 Recommended title:
 
 ```text

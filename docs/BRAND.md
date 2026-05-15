@@ -25,8 +25,12 @@ Brand assets:
 - `assets/brand/social-preview.svg`
 - `assets/brand/social-preview.png`
 - `assets/brand/myelin-greek-social-preview.png`
+- `assets/brand/myelin-launch-slide.png`
+- `assets/brand/myelin-launch-close.png`
 
 The README and GitHub social preview should use `assets/brand/social-preview.png`. The SVG files remain useful for scalable logo work, docs, and future package artwork.
+
+Use `assets/brand/myelin-launch-slide.png` for talks, posts, and launch threads where a cleaner slide works better than the denser social preview. Use `assets/brand/myelin-launch-close.png` as the final card for videos or carousels.
 
 ## Palette
 
