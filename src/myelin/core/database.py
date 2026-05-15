@@ -25,9 +25,14 @@ def _deserialize_f32(blob: bytes, dim: int = 768) -> list[float]:
 def escape_fts_query(query: str) -> str:
     """Convert user text into a safe FTS5 MATCH expression.
 
-    FTS5 treats punctuation such as '-' as query syntax. Agent traces often
-    contain service IDs, paths, flags, and error codes, so quote each token
-    before passing it to MATCH.
+    Uses OR between tokens instead of AND so partial matches still return
+    results. FTS5's default AND means a single missing stopword (e.g. "my",
+    "with") kills the entire query — agent queries are almost always broad
+    enough that any single token match is meaningful, and the multi-signal
+    retriever handles ranking via composite scores.
+
+    Tokens under 3 chars are treated as stopwords and dropped unless they're
+    the only token.
     """
     tokens: list[str] = []
     current: list[str] = []
@@ -35,15 +40,22 @@ def escape_fts_query(query: str) -> str:
         if char.isalnum() or char in "._/@:+-":
             current.append(char)
         elif current:
-            tokens.append("".join(current))
+            token = "".join(current)
+            if len(token) >= 3:
+                token = token.replace('"', '""')
+                tokens.append(f'"{token}"')
             current = []
     if current:
-        tokens.append("".join(current))
+        token = "".join(current)
+        if len(token) >= 3 or not tokens:
+            token = token.replace('"', '""')
+            tokens.append(f'"{token}"')
 
     if not tokens:
         return '"__myelin_no_match__"'
 
-    return " ".join(f'"{token.replace(chr(34), chr(34) + chr(34))}"' for token in tokens)
+    # OR between tokens — any match is better than none, ranking handles the rest
+    return " OR ".join(tokens)
 
 
 class Database:
@@ -226,6 +238,7 @@ class Database:
         limit: int = 10,
         text_weight: float = 0.4,
         vec_weight: float = 0.6,
+        embedding_col: str = "embedding",
     ) -> list[dict[str, Any]]:
         fts_results = self.fts_search(table, fts_table, text_query, limit=limit * 2)
 
@@ -233,7 +246,6 @@ class Database:
             return fts_results[:limit]
 
         fts_ids = {r["id"]: i for i, r in enumerate(fts_results)}
-        embedding_col = "embedding"
         vec_results = self.vec_search(table, embedding_col, query_vec, limit=limit * 2)
         vec_ids = {r["id"]: i for i, r in enumerate(vec_results)}
 

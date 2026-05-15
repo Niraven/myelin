@@ -101,7 +101,7 @@ class MultiSignalRetriever:
                 + w["activation"] * activation_score
             )
 
-            result = {k: v for k, v in candidate.items() if not k.startswith("_")}
+            result = {k: v for k, v in candidate.items() if not k.startswith("_") or k in ("_source_type",)}
             result["_composite_score"] = composite
             result["_scores"] = {
                 "text": text_score,

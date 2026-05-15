@@ -34,7 +34,7 @@ class LocalEmbedding:
             from sentence_transformers import SentenceTransformer
 
             self._model = SentenceTransformer(model_name, trust_remote_code=True)
-            self._dim = int(self._model.get_sentence_embedding_dimension())
+            self._dim = int(self._model.get_embedding_dimension() or 768)
         except ImportError as err:
             raise ImportError(
                 "sentence-transformers required. Install with: pip install myelin[embeddings]"

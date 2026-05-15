@@ -65,18 +65,11 @@ class SleepCycle(CognitiveProcess):
             "stale_flagged": 0,
         }
 
-        # 1. Entity extraction from unprocessed episodes
-        unprocessed = self._get_unprocessed_episodes(limit=500)
-        for ep in unprocessed:
-            entity_ids = self.entities.process_episode(
-                episode_id=ep["id"],
-                content_text=ep.get("content_text", ""),
-                action=ep.get("action", ""),
-                action_type=ep.get("action_type", ""),
-                domain=ep.get("domain"),
-            )
-            results["entities_extracted"] += len(entity_ids)
-            self._mark_entity_processed(ep["id"])
+        # 1. Entity extraction already happens at write time in _record_episode()
+        #    (handlers.py calls entities.process_episode for every observe()).
+        #    Skip redundant extraction — nothing will be "unprocessed" by sleep time.
+        #    Future: add LLM-based concept extraction here for entities the regex
+        #    patterns miss (e.g. "Kanban", "Obsidian", "DAG").
 
         # 2. Relationship inference from session sequences
         recent_episodes = self.db.fetchall(

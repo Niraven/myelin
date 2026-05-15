@@ -28,16 +28,22 @@ def _new_id() -> str:
 
 
 TOOL_PATTERNS = [
-    re.compile(r"\b(git\s+\w+)", re.IGNORECASE),
-    re.compile(r"\b(npm\s+\w+)", re.IGNORECASE),
-    re.compile(r"\b(docker\s+\w+)", re.IGNORECASE),
-    re.compile(r"\b(kubectl\s+\w+)", re.IGNORECASE),
-    re.compile(r"\b(pip\s+\w+)", re.IGNORECASE),
-    re.compile(r"\b(cargo\s+\w+)", re.IGNORECASE),
-    re.compile(r"\b(make\s+\w+)", re.IGNORECASE),
+    re.compile(r"\b(git\s+\w+)\b", re.IGNORECASE),
+    re.compile(r"\b(npm\s+\w+)\b", re.IGNORECASE),
+    re.compile(r"\b(docker\s+\w+)\b", re.IGNORECASE),
+    re.compile(r"\b(kubectl\s+\w+)\b", re.IGNORECASE),
+    re.compile(r"\b(pip\s+\w+)\b", re.IGNORECASE),
+    re.compile(r"\b(cargo\s+\w+)\b", re.IGNORECASE),
+    re.compile(r"\b(make\s+\w+)\b", re.IGNORECASE),
     re.compile(r"\b(pytest|jest|mocha|vitest)\b", re.IGNORECASE),
     re.compile(r"\b(webpack|vite|esbuild|rollup|turbopack)\b", re.IGNORECASE),
     re.compile(r"\b(postgres(?:ql)?|mysql|redis|mongodb|sqlite)\b", re.IGNORECASE),
+    re.compile(r"\b(playwright|puppeteer|selenium)\b", re.IGNORECASE),
+    re.compile(r"\b(cloudflared|ngrok|tailscale|zerotier)\b", re.IGNORECASE),
+    re.compile(r"\b(hermes|myelin)\b", re.IGNORECASE),
+    re.compile(r"\b(obsidian|notion|remio)\b", re.IGNORECASE),
+    re.compile(r"\b(kanban|trello|asana|linear|jira|notion)\b", re.IGNORECASE),
+    re.compile(r"\b(pantheon|slack|discord|telegram|signal|whatsapp)\b", re.IGNORECASE),
 ]
 
 FILE_PATTERN = re.compile(
@@ -130,16 +136,15 @@ def extract_entities_from_text(
 
 
 def _canonicalize(name: str, entity_type: str) -> str:
-    """Normalize entity name to canonical form for deduplication."""
-    name = name.strip()
+    """Normalize entity name to canonical form for deduplication.
+
+    Always lowercased to prevent case mismatches (GitHub vs github).
+    """
+    name = name.strip().lower()
     if not name or len(name) < 2:
         return ""
 
-    if entity_type == "tool":
-        return name.lower().strip()
-    elif entity_type == "file" or entity_type == "service" or entity_type == "error":
-        return name.strip()
-    return name.lower().strip()
+    return name
 
 
 def extract_relations_from_sequence(

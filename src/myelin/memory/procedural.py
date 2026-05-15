@@ -56,7 +56,8 @@ class ProceduralMemory:
     ) -> list[dict[str, Any]]:
         """Find procedures matching a trigger pattern."""
         results = self.db.hybrid_search(
-            "procedures", "procedures_fts", text_query, query_vec, limit=limit * 2
+            "procedures", "procedures_fts", text_query, query_vec, limit=limit * 2,
+            embedding_col="trigger_embedding",
         )
         filtered = [
             r
