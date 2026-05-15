@@ -38,6 +38,7 @@ class NodeType(str, Enum):
     REFLECTION = "reflection"
     META_REFLECTION = "meta_reflection"
     PREFERENCE = "preference"
+    DREAM = "dream"
 
 
 class SourceType(str, Enum):
@@ -73,6 +74,13 @@ class GoalStatus(str, Enum):
     ABANDONED = "abandoned"
 
 
+class UpdateMode(str, Enum):
+    CONFIRMED = "confirmed"
+    SELECTIVE_EDIT = "selective_edit"
+    INTEGRATION = "integration"
+    NEW_EPISODE = "new_episode"
+
+
 class ProcessName(str, Enum):
     CONSOLIDATOR = "consolidator"
     REFLECTOR = "reflector"
@@ -81,6 +89,15 @@ class ProcessName(str, Enum):
     DECAYER = "decayer"
     CHALLENGER = "challenger"
     SLEEP = "sleep"
+    NREM_SLEEP = "nrem_sleep"
+    REM_SLEEP = "rem_sleep"
+    SELF_MODEL = "self_model"
+    CURIOSITY = "curiosity"
+    PREDICTION_LEARNER = "prediction_learner"
+    SCHEMA_LEARNER = "schema_learner"
+    CURIOUS_EXPLORER = "curious_explorer"
+    RECONSOLIDATOR = "reconsolidator"
+    PRIORITIZED_REPLAY = "prioritized_replay"
 
 
 class EntityType(str, Enum):
@@ -105,6 +122,7 @@ class RelationType(str, Enum):
     RELATED_TO = "related_to"
     PART_OF = "part_of"
     TRIGGERS = "triggers"
+    DREAMED_CONNECTION = "dreamed_connection"
 
 
 # ── Episodic Memory ────────────────────────────────────────────
@@ -295,6 +313,43 @@ class Relationship(BaseModel):
     last_observed: str = Field(default_factory=_now_iso)
 
 
+class CuriosityTopic(BaseModel):
+    """A knowledge gap detected by the curiosity engine.
+
+    Represents a specific target (entity, domain, procedure, or relationship)
+    that the system knows little about and could benefit from exploring.
+    """
+    gap_type: str  # 'entity_undermentions', 'domain_low_procedures', etc.
+    target_id: str
+    target_name: str
+    domain: str | None = None
+    raw_score: float = 0.0
+    novelty_score: float = 0.0
+    uncertainty_score: float = 0.0
+    infogain_potential: float = 0.0
+    curiosity_score: float = 0.0
+    exploration_attempts: int = 0
+    fatigue_factor: float = 1.0
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: str = Field(default_factory=_now_iso)
+
+
+class CuriousGoalModel(BaseModel):
+    """Extended learning goal generated from a curiosity topic."""
+    id: str = Field(default_factory=_new_id)
+    domain: str | None = None
+    goal: str
+    strategy: str | None = None
+    priority: float = 0.5
+    status: GoalStatus = GoalStatus.ACTIVE
+    episodes_needed: int = 3
+    episodes_collected: int = 0
+    gap_type: str | None = None
+    target_id: str | None = None
+    created_at: str = Field(default_factory=_now_iso)
+    resolved_at: str | None = None
+
+
 class TemporalState(BaseModel):
     id: str = Field(default_factory=_new_id)
     entity_id: str | None = None
@@ -322,6 +377,38 @@ class TransferRecord(BaseModel):
 
 
 # ── Cognitive Process Tracking ─────────────────────────────────
+
+
+class SchemaType(str, Enum):
+    BEHAVIORAL = "behavioral"
+    PREFERENCE = "preference"
+    DOMAIN_MODEL = "domain_model"
+
+
+class SchemaStatus(str, Enum):
+    HYPOTHESIS = "hypothesis"
+    ACTIVE = "active"
+    REFUTED = "refuted"
+    ARCHIVED = "archived"
+
+
+class SchemaModel(BaseModel):
+    id: str = Field(default_factory=_new_id)
+    name: str
+    description: str | None = None
+    behavioral_pattern: str
+    schema_type: SchemaType = SchemaType.BEHAVIORAL
+    semantic_source_ids: list[str] = Field(default_factory=list)
+    episode_source_ids: list[str] = Field(default_factory=list)
+    confidence: float = 0.5
+    induction_count: int = 1
+    domain: str | None = None
+    conditions: list[str] = Field(default_factory=list)
+    exceptions: list[str] = Field(default_factory=list)
+    version: int = 1
+    status: SchemaStatus = SchemaStatus.HYPOTHESIS
+    created_at: str = Field(default_factory=_now_iso)
+    updated_at: str = Field(default_factory=_now_iso)
 
 
 class ProcessRun(BaseModel):

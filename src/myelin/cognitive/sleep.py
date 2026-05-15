@@ -1,21 +1,21 @@
-"""Sleep cycle cognitive process.
+"""Sleep cycle — two-phase NREM + REM orchestration.
 
-Inspired by hermes-cashew's sleep synthesis (9-phase consolidation,
-7K nodes in ~4s) but deeply integrated with Myelin's knowledge graph,
-entity extraction, and temporal reasoning.
+Replaces the single-phase batch consolidation with a proper two-phase sleep
+system inspired by neuroscience (Frankland & Bontempi 2005, Nature 2025):
 
-Hermes-cashew runs: cross-linking, dedup, GC, permanence evaluation,
-core memory promotion, and dream generation.
+PHASE 1 — NREM (non-rapid eye movement):
+  - Hebbian strengthening: Δs = η * I(c_i) * I(c_j) for co-occurring pairs
+  - Synaptic downscaling (SHY): s ← 0.85 * s on all relationships
+  - Temporal substate separation: recent (<2 days) cluster + strengthen,
+    older (>2 days) integrate with existing clusters
+  - Veridical replay: high-priority episodes replayed through graph
 
-Our sleep cycle runs:
-1. Entity extraction: batch-extract entities from unprocessed episodes
-2. Relationship inference: learn typed edges from action sequences
-3. Graph consolidation: merge weak entities, strengthen frequent edges
-4. Temporal state updates: close stale states, detect transitions
-5. Cross-domain linking: find entities that bridge domains
-6. Staleness detection: flag entities/facts not seen in recent sessions
-7. Importance scoring: compute per-episode importance from cluster stats
-8. Stats: report what changed
+PHASE 2 — REM (rapid eye movement):
+  - Random walk dreaming: BFS random walks through knowledge graph,
+    creating weak 'dreamed_connection' edges
+  - Counterfactual generation: "what if" alternatives for failed episodes
+  - Novel connection discovery: cross-domain linking via shared attributes
+  - TAG importance-weighted replay selection for next cycle
 
 Trigger: session end (alongside other cognitive processes) or manual.
 """
@@ -36,6 +36,8 @@ from ..knowledge.graph import KnowledgeGraph
 from ..knowledge.temporal import TemporalIndex
 from .base import CognitiveProcess
 from .importance import ImportanceWeights, score_clusters
+from .nrem_sleep import NREMPhase
+from .rem_sleep import REMPhase
 
 
 class ImportanceComputer:
@@ -74,7 +76,15 @@ class ImportanceComputer:
 
 
 class SleepCycle(CognitiveProcess):
-    """Batch consolidation process that builds the knowledge graph."""
+    """Two-phase sleep orchestrator: NREM + REM consolidation.
+
+    Runs NREM phase first (strengthening, downscaling, replay),
+    then REM phase (dreaming, counterfactuals, novel connections).
+
+    Also retains the original graph consolidation steps for backward
+    compatibility (entity extraction, relationship inference, temporal
+    updates, cross-domain linking, staleness detection).
+    """
 
     name = ProcessName.SLEEP
 
@@ -92,11 +102,15 @@ class SleepCycle(CognitiveProcess):
         self.temporal = temporal or TemporalIndex(db)
         self.hybrid_extractor = hybrid_extractor
 
+        # Create phase modules (share same dependencies)
+        self.nrem = NREMPhase(db, self.entities, self.graph, self.temporal)
+        self.rem = REMPhase(db, self.entities, self.graph, self.temporal)
+
     def should_run(self) -> bool:
         return True
 
     async def execute(self) -> dict[str, Any]:
-        results = {
+        results: dict[str, Any] = {
             "entities_extracted": 0,
             "relationships_created": 0,
             "entities_merged": 0,
@@ -104,13 +118,12 @@ class SleepCycle(CognitiveProcess):
             "cross_domain_links": 0,
             "stale_flagged": 0,
             "importance_scores_updated": 0,
+            # Two-phase sleep results
+            "nrem": {},
+            "rem": {},
         }
 
-        # 1. Entity extraction already happens at write time in _record_episode()
-        #    (handlers.py calls entities.process_episode for every observe()).
-        #    Future: add LLM-based concept extraction here for entities the regex
-        #    patterns miss (e.g. "Kanban", "Obsidian", "DAG").
-
+        # ── Pre-sleep: legacy graph maintenance ────────────────
         # LLM-based concept extraction during sleep (gated by --llm-extraction)
         if self.hybrid_extractor:
             unprocessed = self._get_unprocessed_episodes()
@@ -126,7 +139,6 @@ class SleepCycle(CognitiveProcess):
                             "canonical_name", candidate["name"].lower().strip()
                         ),
                     )
-                    # Link mentions back to episodes that contain the candidate
                     candidate_lower = candidate["name"].lower()
                     for ep in unprocessed:
                         if candidate_lower in ep.get("content_text", "").lower():
@@ -138,7 +150,7 @@ class SleepCycle(CognitiveProcess):
                             )
                     results["entities_extracted"] += 1
 
-        # 2. Relationship inference from session sequences
+        # Relationship inference from session sequences
         recent_episodes = self.db.fetchall(
             "SELECT * FROM episodes ORDER BY timestamp DESC LIMIT 1000"
         )
@@ -160,19 +172,21 @@ class SleepCycle(CognitiveProcess):
                     )
                     results["relationships_created"] += 1
 
-        # 3. Graph consolidation: merge weak duplicate entities
+        # Graph consolidation: merge weak duplicate entities
         results["entities_merged"] += self._merge_weak_entities()
 
-        # 4. Temporal state updates from recent episodes
-        results["temporal_states_updated"] += self._update_temporal_states(recent_episodes[:100])
+        # Temporal state updates from recent episodes
+        results["temporal_states_updated"] += self._update_temporal_states(
+            recent_episodes[:100]
+        )
 
-        # 5. Cross-domain linking
+        # Cross-domain linking (legacy approach)
         results["cross_domain_links"] += self._find_cross_domain_links()
 
-        # 6. Staleness detection
+        # Staleness detection
         results["stale_flagged"] += self._flag_stale_entities()
 
-        # 7. Importance scoring
+        # Importance scoring
         importance_computer = ImportanceComputer()
         episode_scores = importance_computer.compute(
             self.db,
@@ -182,6 +196,12 @@ class SleepCycle(CognitiveProcess):
         results["importance_scores_updated"] = importance_computer.persist(
             self.db, episode_scores
         )
+
+        # ── PHASE 1: NREM Sleep ───────────────────────────────
+        results["nrem"] = await self.nrem.execute()
+
+        # ── PHASE 2: REM Sleep ────────────────────────────────
+        results["rem"] = await self.rem.execute()
 
         return results
 
@@ -197,9 +217,6 @@ class SleepCycle(CognitiveProcess):
             """,
             (limit,),
         )
-
-    def _mark_entity_processed(self, episode_id: str) -> None:
-        pass
 
     def _merge_weak_entities(self, min_mentions: int = 1) -> int:
         """Merge entities that appear only once and have similar names."""
@@ -230,15 +247,8 @@ class SleepCycle(CognitiveProcess):
         """Create temporal states from episodes that indicate state changes."""
         updated = 0
         state_keywords = {
-            "deploy",
-            "migrate",
-            "update",
-            "upgrade",
-            "install",
-            "configure",
-            "fix",
-            "break",
-            "fail",
+            "deploy", "migrate", "update", "upgrade",
+            "install", "configure", "fix", "break", "fail",
         }
 
         for ep in episodes:
@@ -290,7 +300,7 @@ class SleepCycle(CognitiveProcess):
         for entity in cross_domain:
             domains = entity["domains"].split(",") if entity["domains"] else []
             for i, d1 in enumerate(domains):
-                for _d2 in domains[i + 1 :]:
+                for _d2 in domains[i + 1:]:
                     domain_entities_1 = self.db.fetchall(
                         "SELECT id FROM entities WHERE domain = ? AND id != ? LIMIT 5",
                         (d1, entity["id"]),

@@ -1,6 +1,14 @@
-"""Myelin V2 SQLite schema. Grounded in ACT-R, SOAR, and Generative Agents."""
+"""Myelin V4 SQLite schema — full learning OS foundation.
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION 4 adds:
+- Reconsolidation: lability windows, prediction error tracking, update modes
+- Two-phase sleep: NREM (strengthening, downscaling) + REM (counterfactual simulation)
+- Prioritized replay: priority scoring, replay tracking, surprise signals
+- Prediction error learning: TD-error tracking, forward model logging
+- Schema learning: abstract behavioral patterns from semantic clusters
+"""
+
+SCHEMA_VERSION = 4
 
 SCHEMA_SQL = """
 PRAGMA journal_mode=WAL;
@@ -14,7 +22,7 @@ CREATE TABLE IF NOT EXISTS schema_meta (
 
 -- ============================================================
 -- EPISODIC MEMORY
--- Raw observations of agent behavior with full context.
+-- Raw observations with learning OS extensions (V4).
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS episodes (
@@ -25,30 +33,37 @@ CREATE TABLE IF NOT EXISTS episodes (
 
     -- What happened
     action TEXT NOT NULL,
-    action_type TEXT NOT NULL,          -- 'tool_call', 'response', 'error', 'user_input'
-    input_context TEXT,                 -- JSON: what triggered this action
-    output_result TEXT,                 -- JSON: what the action produced
-    success INTEGER NOT NULL DEFAULT 1, -- 0 or 1
+    action_type TEXT NOT NULL,
+    input_context TEXT,
+    output_result TEXT,
+    success INTEGER NOT NULL DEFAULT 1,
 
     -- Semantic search
-    content_text TEXT NOT NULL,         -- Flattened text for FTS
-    embedding BLOB,                    -- Vector embedding (768d float32)
+    content_text TEXT NOT NULL,
+    embedding BLOB,
 
-    -- ACT-R activation tracking
+    -- ACT-R activation
     access_count INTEGER NOT NULL DEFAULT 1,
-    access_times TEXT NOT NULL DEFAULT '[]', -- JSON array of unix timestamps
+    access_times TEXT NOT NULL DEFAULT '[]',
     last_accessed TEXT NOT NULL DEFAULT (datetime('now')),
 
     -- Consolidation state
     consolidated INTEGER NOT NULL DEFAULT 0,
     cluster_id TEXT,
 
-    -- Importance scoring (0.0-1.0, computed during sleep)
+    -- V3: Importance scoring
     importance_score REAL NOT NULL DEFAULT 0.5,
 
+    -- V4: Learning OS extensions
+    td_error REAL,                      -- Prediction error from procedure execution
+    surprise_score REAL,                -- Surprise signal (0.0-1.0)
+    priority_score REAL DEFAULT 0.5,    -- Composite priority for replay
+    replay_count INTEGER DEFAULT 0,     -- Times consumed in replay
+    labile_until TEXT,                  -- Reconsolidation lability window expiry
+
     -- Metadata
-    tags TEXT DEFAULT '[]',            -- JSON array
-    domain TEXT,                       -- Inferred domain (e.g. 'deployment', 'testing')
+    tags TEXT DEFAULT '[]',
+    domain TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -58,21 +73,23 @@ CREATE INDEX IF NOT EXISTS idx_episodes_domain ON episodes(domain);
 CREATE INDEX IF NOT EXISTS idx_episodes_cluster ON episodes(cluster_id);
 CREATE INDEX IF NOT EXISTS idx_episodes_timestamp ON episodes(timestamp);
 CREATE INDEX IF NOT EXISTS idx_episodes_consolidated ON episodes(consolidated);
+CREATE INDEX IF NOT EXISTS idx_episodes_labile ON episodes(labile_until);
+CREATE INDEX IF NOT EXISTS idx_episodes_priority ON episodes(priority_score DESC);
 
 -- ============================================================
 -- SEMANTIC MEMORY
--- Facts, reflections, and higher-order knowledge.
+-- Facts and reflections with reconsolidation support (V4).
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS semantic_nodes (
     id TEXT PRIMARY KEY,
-    node_type TEXT NOT NULL,            -- 'fact', 'reflection', 'meta_reflection', 'preference'
+    node_type TEXT NOT NULL,
     content TEXT NOT NULL,
     embedding BLOB,
 
     -- Source tracking
-    source_type TEXT NOT NULL,          -- 'observation', 'reflection', 'teaching', 'transfer'
-    source_ids TEXT NOT NULL DEFAULT '[]', -- JSON: episode/node IDs this was derived from
+    source_type TEXT NOT NULL,
+    source_ids TEXT NOT NULL DEFAULT '[]',
 
     -- ACT-R activation
     access_count INTEGER NOT NULL DEFAULT 1,
@@ -82,8 +99,14 @@ CREATE TABLE IF NOT EXISTS semantic_nodes (
     -- Confidence and validity
     confidence REAL NOT NULL DEFAULT 0.5,
     valid_from TEXT,
-    valid_until TEXT,                   -- NULL = still valid
-    superseded_by TEXT,                 -- ID of replacement node
+    valid_until TEXT,
+    superseded_by TEXT,
+
+    -- V4: Reconsolidation + prediction error
+    labile_until TEXT,
+    prediction_error REAL,
+    last_pe_raw REAL,
+    last_update_mode TEXT,
 
     -- Organization
     domain TEXT,
@@ -95,10 +118,11 @@ CREATE TABLE IF NOT EXISTS semantic_nodes (
 CREATE INDEX IF NOT EXISTS idx_semantic_type ON semantic_nodes(node_type);
 CREATE INDEX IF NOT EXISTS idx_semantic_domain ON semantic_nodes(domain);
 CREATE INDEX IF NOT EXISTS idx_semantic_confidence ON semantic_nodes(confidence);
+CREATE INDEX IF NOT EXISTS idx_semantic_labile ON semantic_nodes(labile_until);
 
 -- ============================================================
 -- PROCEDURAL MEMORY
--- Learned workflows with branching, variants, and composition.
+-- Learned workflows with prediction error tracking (V4).
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS procedures (
@@ -107,19 +131,19 @@ CREATE TABLE IF NOT EXISTS procedures (
     description TEXT,
 
     -- Trigger matching
-    trigger_pattern TEXT NOT NULL,      -- Natural language trigger description
-    trigger_embedding BLOB,            -- Vector for semantic matching
+    trigger_pattern TEXT NOT NULL,
+    trigger_embedding BLOB,
 
-    -- Procedure body (V2: supports branching)
-    steps TEXT NOT NULL,                -- JSON: ordered steps with CORE/VARIANT/OPTIONAL flags
-    preconditions TEXT DEFAULT '[]',    -- JSON: what must be true before execution
-    postconditions TEXT DEFAULT '[]',   -- JSON: what is true after execution
+    -- Procedure body
+    steps TEXT NOT NULL,
+    preconditions TEXT DEFAULT '[]',
+    postconditions TEXT DEFAULT '[]',
 
-    -- Bayesian confidence (V2)
+    -- Bayesian confidence
     confidence REAL NOT NULL DEFAULT 0.5,
-    predicted_success_rate REAL,        -- What we predict
-    actual_success_rate REAL,           -- What actually happens
-    calibration_offset REAL DEFAULT 0.0, -- predicted - actual (for correction)
+    predicted_success_rate REAL,
+    actual_success_rate REAL,
+    calibration_offset REAL DEFAULT 0.0,
     success_count INTEGER NOT NULL DEFAULT 0,
     failure_count INTEGER NOT NULL DEFAULT 0,
     modify_count INTEGER NOT NULL DEFAULT 0,
@@ -129,22 +153,28 @@ CREATE TABLE IF NOT EXISTS procedures (
     access_times TEXT NOT NULL DEFAULT '[]',
     last_executed TEXT,
 
+    -- V4: Prediction error learning
+    prediction_error REAL,              -- Last TD-error magnitude
+    surprise_score REAL,                -- Surprise from last execution
+    total_pe_sum REAL DEFAULT 0.0,      -- Running sum for PE tracking
+    pe_count INTEGER DEFAULT 0,         -- Number of prediction errors recorded
+
     -- Provenance
     source_agent TEXT NOT NULL,
-    source_episodes TEXT DEFAULT '[]',  -- JSON: episode IDs that generated this
-    promotion_method TEXT DEFAULT 'auto', -- 'auto', 'taught', 'transferred', 'composed'
+    source_episodes TEXT DEFAULT '[]',
+    promotion_method TEXT DEFAULT 'auto',
 
-    -- Composition (V2: SOAR chunking)
+    -- Composition
     is_composite INTEGER NOT NULL DEFAULT 0,
-    component_procedures TEXT DEFAULT '[]', -- JSON: IDs of sub-procedures
-    parent_procedures TEXT DEFAULT '[]',    -- JSON: IDs of meta-procedures containing this
+    component_procedures TEXT DEFAULT '[]',
+    parent_procedures TEXT DEFAULT '[]',
 
     -- Transfer tracking
-    transferred_to TEXT DEFAULT '[]',   -- JSON: agent IDs
+    transferred_to TEXT DEFAULT '[]',
     transfer_success_rate REAL DEFAULT 0.0,
 
     -- Lifecycle
-    status TEXT NOT NULL DEFAULT 'draft', -- 'draft', 'active', 'reflexive', 'archived'
+    status TEXT NOT NULL DEFAULT 'draft',
     version INTEGER NOT NULL DEFAULT 1,
     domain TEXT,
     tags TEXT DEFAULT '[]',
@@ -160,125 +190,104 @@ CREATE INDEX IF NOT EXISTS idx_procedures_source_agent ON procedures(source_agen
 CREATE INDEX IF NOT EXISTS idx_procedures_composite ON procedures(is_composite);
 
 -- ============================================================
--- METACOGNITION
--- Confidence maps, learning goals, calibration, self-evaluation.
+-- V4: RECONSOLIDATION LOG
+-- Tracks every reconsolidation event with before/after snapshots.
 -- ============================================================
 
-CREATE TABLE IF NOT EXISTS confidence_map (
+CREATE TABLE IF NOT EXISTS reconsolidation_log (
     id TEXT PRIMARY KEY,
-    domain TEXT NOT NULL UNIQUE,
-    confidence REAL NOT NULL DEFAULT 0.0,
-    episode_count INTEGER NOT NULL DEFAULT 0,
-    procedure_count INTEGER NOT NULL DEFAULT 0,
-    last_activity TEXT,
-    trend TEXT DEFAULT 'stable',       -- 'improving', 'stable', 'declining'
-    trend_delta REAL DEFAULT 0.0,      -- Confidence change over 30 days
+    memory_type TEXT NOT NULL,           -- 'episode', 'semantic_node', 'procedure'
+    memory_id TEXT NOT NULL,
+    pe_raw REAL NOT NULL,               -- Raw prediction error (Jaccard distance)
+    pe_eff REAL NOT NULL,               -- Effective PE after neuromodulation
+    update_mode TEXT NOT NULL,           -- 'confirmed', 'selective_edit', 'integration', 'new_episode'
+    labile_duration_minutes REAL,        -- How long the lability window was open
+    snapshot_before TEXT,                -- JSON: memory content before update
+    snapshot_after TEXT,                 -- JSON: memory content after update
+    trigger_episode_id TEXT,             -- What episode triggered reconsolidation
+    agent_id TEXT,
+    timestamp TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_recon_memory ON reconsolidation_log(memory_type, memory_id);
+CREATE INDEX IF NOT EXISTS idx_recon_mode ON reconsolidation_log(update_mode);
+CREATE INDEX IF NOT EXISTS idx_recon_timestamp ON reconsolidation_log(timestamp);
+
+-- ============================================================
+-- V4: PREDICTION LOG
+-- Tracks every prediction vs actual outcome for calibration.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS prediction_log (
+    id TEXT PRIMARY KEY,
+    procedure_id TEXT NOT NULL,
+    episode_id TEXT,                     -- Episode that triggered prediction
+    predicted_success INTEGER,           -- What we predicted (0 or 1)
+    predicted_confidence REAL,           -- Confidence in prediction
+    actual_outcome INTEGER,              -- What actually happened (0 or 1)
+    td_error REAL NOT NULL,              -- Temporal difference error
+    surprise_score REAL,                 -- Normalized surprise (0.0-1.0)
+    domain TEXT,
+    agent_id TEXT,
+    timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (procedure_id) REFERENCES procedures(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_pred_procedure ON prediction_log(procedure_id);
+CREATE INDEX IF NOT EXISTS idx_pred_td_error ON prediction_log(td_error DESC);
+CREATE INDEX IF NOT EXISTS idx_pred_timestamp ON prediction_log(timestamp);
+
+-- ============================================================
+-- V4: SCHEMA LAYER
+-- Behavioral patterns emerging from semantic cluster inductions.
+-- Agenternal-inspired: 3+ semantic memories cluster -> schema.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS schemas (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT,
+    behavioral_pattern TEXT NOT NULL,    -- The abstracted pattern
+    schema_type TEXT NOT NULL DEFAULT 'behavioral', -- 'behavioral', 'preference', 'domain_model'
+
+    -- Induction metadata
+    semantic_source_ids TEXT NOT NULL DEFAULT '[]',  -- JSON: IDs of semantic nodes that induced this
+    episode_source_ids TEXT NOT NULL DEFAULT '[]',   -- JSON: IDs of episodes that support this
+    confidence REAL NOT NULL DEFAULT 0.5,
+    induction_count INTEGER DEFAULT 1,   -- How many times this schema was re-induced
+
+    -- Applicability
+    domain TEXT,
+    conditions TEXT DEFAULT '[]',        -- JSON: when this schema applies
+    exceptions TEXT DEFAULT '[]',        -- JSON: when this schema does NOT apply
+
+    -- Lifecycle
+    version INTEGER NOT NULL DEFAULT 1,
+    status TEXT NOT NULL DEFAULT 'active', -- 'active', 'hypothesis', 'refuted', 'archived'
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- SOAR-inspired impasse detection and learning goals
-CREATE TABLE IF NOT EXISTS learning_goals (
-    id TEXT PRIMARY KEY,
-    domain TEXT NOT NULL,
-    goal TEXT NOT NULL,                 -- What we need to learn
-    strategy TEXT,                      -- How we plan to learn it
-    priority REAL NOT NULL DEFAULT 0.5,
-    status TEXT NOT NULL DEFAULT 'active', -- 'active', 'achieved', 'abandoned'
-    episodes_needed INTEGER DEFAULT 3,
-    episodes_collected INTEGER DEFAULT 0,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    resolved_at TEXT
-);
-
-CREATE INDEX IF NOT EXISTS idx_learning_goals_status ON learning_goals(status);
-CREATE INDEX IF NOT EXISTS idx_learning_goals_domain ON learning_goals(domain);
-
--- Calibration tracking: predicted vs actual
-CREATE TABLE IF NOT EXISTS calibration_log (
-    id TEXT PRIMARY KEY,
-    procedure_id TEXT NOT NULL,
-    predicted_confidence REAL NOT NULL,
-    actual_outcome INTEGER NOT NULL,   -- 0 or 1
-    timestamp TEXT NOT NULL DEFAULT (datetime('now')),
-    FOREIGN KEY (procedure_id) REFERENCES procedures(id) ON DELETE CASCADE
-);
-
--- Self-evaluation snapshots
-CREATE TABLE IF NOT EXISTS self_evaluations (
-    id TEXT PRIMARY KEY,
-    timestamp TEXT NOT NULL DEFAULT (datetime('now')),
-    top_domains TEXT NOT NULL,          -- JSON: highest confidence
-    weak_domains TEXT NOT NULL,         -- JSON: lowest confidence with activity
-    improving TEXT NOT NULL,            -- JSON: positive trend
-    declining TEXT NOT NULL,            -- JSON: negative trend
-    insights TEXT                       -- Generated self-reflection text
-);
-
--- ============================================================
--- TRANSFER
--- Agent profiles and cross-agent procedure adaptation.
--- ============================================================
-
-CREATE TABLE IF NOT EXISTS agent_profiles (
-    agent_id TEXT PRIMARY KEY,
-    agent_name TEXT,
-    tools TEXT NOT NULL DEFAULT '[]',   -- JSON: available tool names
-    context_format TEXT,                -- 'mcp_stdio', 'mcp_sse', 'custom'
-    model_family TEXT,                  -- 'claude', 'gpt', 'llama', etc.
-    max_context INTEGER,
-    supports_images INTEGER DEFAULT 0,
-    capabilities TEXT DEFAULT '{}',     -- JSON: additional capability flags
-    first_seen TEXT NOT NULL DEFAULT (datetime('now')),
-    last_seen TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS transfer_log (
-    id TEXT PRIMARY KEY,
-    procedure_id TEXT NOT NULL,
-    source_agent TEXT NOT NULL,
-    target_agent TEXT NOT NULL,
-    similarity_score REAL NOT NULL,
-    transfer_confidence REAL NOT NULL,
-    adapted INTEGER NOT NULL DEFAULT 0,
-    adaptation_details TEXT,            -- JSON: what was changed
-    outcome TEXT DEFAULT 'pending',     -- 'pending', 'success', 'failure', 'modified'
-    timestamp TEXT NOT NULL DEFAULT (datetime('now')),
-    FOREIGN KEY (procedure_id) REFERENCES procedures(id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_transfer_log_procedure ON transfer_log(procedure_id);
-CREATE INDEX IF NOT EXISTS idx_transfer_log_agents ON transfer_log(source_agent, target_agent);
-
--- Tool usage tracking per agent (auto-discovered from episodes)
-CREATE TABLE IF NOT EXISTS tool_usage (
-    agent_id TEXT NOT NULL,
-    tool_name TEXT NOT NULL,
-    usage_count INTEGER NOT NULL DEFAULT 1,
-    last_seen TEXT NOT NULL DEFAULT (datetime('now')),
-    PRIMARY KEY (agent_id, tool_name),
-    FOREIGN KEY (agent_id) REFERENCES agent_profiles(agent_id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_tool_usage_agent ON tool_usage(agent_id);
-CREATE INDEX IF NOT EXISTS idx_tool_usage_count ON tool_usage(usage_count DESC);
+CREATE INDEX IF NOT EXISTS idx_schemas_domain ON schemas(domain);
+CREATE INDEX IF NOT EXISTS idx_schemas_type ON schemas(schema_type);
+CREATE INDEX IF NOT EXISTS idx_schemas_confidence ON schemas(confidence DESC);
+CREATE INDEX IF NOT EXISTS idx_schemas_status ON schemas(status);
 
 -- ============================================================
 -- COGNITIVE PROCESSES
--- Background process state and scheduling.
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS process_runs (
     id TEXT PRIMARY KEY,
-    process_name TEXT NOT NULL,         -- 'consolidator', 'reflector', 'promoter', 'composer', 'decayer', 'challenger'
+    process_name TEXT NOT NULL,
     started_at TEXT NOT NULL DEFAULT (datetime('now')),
     completed_at TEXT,
     items_processed INTEGER DEFAULT 0,
     items_created INTEGER DEFAULT 0,
     items_modified INTEGER DEFAULT 0,
-    status TEXT NOT NULL DEFAULT 'running', -- 'running', 'completed', 'failed'
+    status TEXT NOT NULL DEFAULT 'running',
     error TEXT,
-    details TEXT                        -- JSON: process-specific output
+    details TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_process_runs_name ON process_runs(process_name);
@@ -286,28 +295,19 @@ CREATE INDEX IF NOT EXISTS idx_process_runs_status ON process_runs(status);
 
 -- ============================================================
 -- KNOWLEDGE GRAPH
--- Entity extraction, typed relationships, temporal index.
--- Stolen from: mem0 (entity linking), Supermemory (ontology-aware graph).
--- Made better: entities feed procedure discovery, relationships are
--- learned from behavior not just similarity, temporal reasoning
--- resolves "current state" vs "historical" queries.
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS entities (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
-    entity_type TEXT NOT NULL,           -- 'tool', 'service', 'concept', 'file', 'person', 'config', 'error'
-    canonical_name TEXT NOT NULL,        -- Deduplicated canonical form
+    entity_type TEXT NOT NULL,
+    canonical_name TEXT NOT NULL,
     description TEXT,
     embedding BLOB,
-
-    -- Frequency and activation
     mention_count INTEGER NOT NULL DEFAULT 1,
     access_times TEXT NOT NULL DEFAULT '[]',
     first_seen TEXT NOT NULL DEFAULT (datetime('now')),
     last_seen TEXT NOT NULL DEFAULT (datetime('now')),
-
-    -- Provenance
     domain TEXT,
     source_episodes TEXT NOT NULL DEFAULT '[]',
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -318,14 +318,13 @@ CREATE INDEX IF NOT EXISTS idx_entities_type ON entities(entity_type);
 CREATE INDEX IF NOT EXISTS idx_entities_domain ON entities(domain);
 CREATE INDEX IF NOT EXISTS idx_entities_mention_count ON entities(mention_count DESC);
 
--- Links entities to the episodes/nodes where they appear
 CREATE TABLE IF NOT EXISTS entity_mentions (
     id TEXT PRIMARY KEY,
     entity_id TEXT NOT NULL,
-    source_type TEXT NOT NULL,           -- 'episode', 'semantic_node', 'procedure'
+    source_type TEXT NOT NULL,
     source_id TEXT NOT NULL,
-    context_snippet TEXT,                -- Surrounding text where entity was found
-    role TEXT DEFAULT 'subject',         -- 'subject', 'object', 'tool', 'target'
+    context_snippet TEXT,
+    role TEXT DEFAULT 'subject',
     timestamp TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (entity_id) REFERENCES entities(id) ON DELETE CASCADE
 );
@@ -333,16 +332,14 @@ CREATE TABLE IF NOT EXISTS entity_mentions (
 CREATE INDEX IF NOT EXISTS idx_entity_mentions_entity ON entity_mentions(entity_id);
 CREATE INDEX IF NOT EXISTS idx_entity_mentions_source ON entity_mentions(source_type, source_id);
 
--- Typed edges between entities (the knowledge graph)
 CREATE TABLE IF NOT EXISTS relationships (
     id TEXT PRIMARY KEY,
     source_entity_id TEXT NOT NULL,
     target_entity_id TEXT NOT NULL,
-    relation_type TEXT NOT NULL,         -- 'uses', 'requires', 'produces', 'causes', 'contradicts', 'supersedes', 'related_to', 'part_of', 'triggers'
-    strength REAL NOT NULL DEFAULT 1.0,  -- Co-occurrence / confidence weight
+    relation_type TEXT NOT NULL,
+    strength REAL NOT NULL DEFAULT 1.0,
     evidence_count INTEGER NOT NULL DEFAULT 1,
     evidence_episodes TEXT NOT NULL DEFAULT '[]',
-
     domain TEXT,
     first_observed TEXT NOT NULL DEFAULT (datetime('now')),
     last_observed TEXT NOT NULL DEFAULT (datetime('now')),
@@ -356,14 +353,14 @@ CREATE INDEX IF NOT EXISTS idx_relationships_target ON relationships(target_enti
 CREATE INDEX IF NOT EXISTS idx_relationships_type ON relationships(relation_type);
 CREATE INDEX IF NOT EXISTS idx_relationships_strength ON relationships(strength DESC);
 
--- Temporal index: tracks state changes over time for entities/facts
+-- Temporal index
 CREATE TABLE IF NOT EXISTS temporal_states (
     id TEXT PRIMARY KEY,
-    entity_id TEXT,                      -- NULL for general facts
-    semantic_node_id TEXT,               -- The semantic node this state comes from
-    state_description TEXT NOT NULL,     -- What was true at this time
+    entity_id TEXT,
+    semantic_node_id TEXT,
+    state_description TEXT NOT NULL,
     valid_from TEXT NOT NULL,
-    valid_until TEXT,                    -- NULL = currently valid
+    valid_until TEXT,
     confidence REAL NOT NULL DEFAULT 0.5,
     source_episode_id TEXT,
     domain TEXT,
@@ -378,12 +375,8 @@ CREATE INDEX IF NOT EXISTS idx_temporal_domain ON temporal_states(domain);
 
 -- FTS for entities
 CREATE VIRTUAL TABLE IF NOT EXISTS entities_fts USING fts5(
-    name,
-    canonical_name,
-    description,
-    entity_type,
-    content='entities',
-    content_rowid='rowid'
+    name, canonical_name, description, entity_type,
+    content='entities', content_rowid='rowid'
 );
 
 CREATE TRIGGER IF NOT EXISTS entities_ai AFTER INSERT ON entities BEGIN
@@ -404,33 +397,22 @@ CREATE TRIGGER IF NOT EXISTS entities_au AFTER UPDATE ON entities BEGIN
 END;
 
 -- ============================================================
--- FULL-TEXT SEARCH (FTS5)
+-- FULL-TEXT SEARCH
 -- ============================================================
 
 CREATE VIRTUAL TABLE IF NOT EXISTS episodes_fts USING fts5(
-    content_text,
-    action,
-    domain,
-    tags,
-    content='episodes',
-    content_rowid='rowid'
+    content_text, action, domain, tags,
+    content='episodes', content_rowid='rowid'
 );
 
 CREATE VIRTUAL TABLE IF NOT EXISTS semantic_fts USING fts5(
-    content,
-    domain,
-    tags,
-    content='semantic_nodes',
-    content_rowid='rowid'
+    content, domain, tags,
+    content='semantic_nodes', content_rowid='rowid'
 );
 
 CREATE VIRTUAL TABLE IF NOT EXISTS procedures_fts USING fts5(
-    name,
-    description,
-    trigger_pattern,
-    domain,
-    content='procedures',
-    content_rowid='rowid'
+    name, description, trigger_pattern, domain,
+    content='procedures', content_rowid='rowid'
 );
 
 -- FTS sync triggers for episodes
@@ -469,28 +451,6 @@ CREATE TRIGGER IF NOT EXISTS semantic_au AFTER UPDATE ON semantic_nodes BEGIN
     VALUES (new.rowid, new.content, new.domain, new.tags);
 END;
 
--- ============================================================
--- USER PROFILING
--- Learned preferences, style, priorities from episodes.
--- Static/dynamic split inspired by Supermemory.
--- ============================================================
-
-CREATE TABLE IF NOT EXISTS profile_facts (
-    id TEXT PRIMARY KEY,
-    agent_id TEXT NOT NULL,
-    fact TEXT NOT NULL,
-    category TEXT NOT NULL,  -- 'preference', 'style', 'priority', 'skill', 'fact'
-    confidence REAL DEFAULT 0.5,
-    is_static INTEGER DEFAULT 0,
-    created_at TEXT NOT NULL,
-    last_observed TEXT NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_profile_facts_agent ON profile_facts(agent_id);
-CREATE INDEX IF NOT EXISTS idx_profile_facts_category ON profile_facts(agent_id, category);
-CREATE INDEX IF NOT EXISTS idx_profile_facts_static ON profile_facts(agent_id, is_static);
-CREATE INDEX IF NOT EXISTS idx_profile_facts_confidence ON profile_facts(agent_id, confidence DESC);
-
 -- FTS sync triggers for procedures
 CREATE TRIGGER IF NOT EXISTS procedures_ai AFTER INSERT ON procedures BEGIN
     INSERT INTO procedures_fts(rowid, name, description, trigger_pattern, domain)
@@ -508,26 +468,132 @@ CREATE TRIGGER IF NOT EXISTS procedures_au AFTER UPDATE ON procedures BEGIN
     INSERT INTO procedures_fts(rowid, name, description, trigger_pattern, domain)
     VALUES (new.rowid, new.name, new.description, new.trigger_pattern, new.domain);
 END;
+
+-- Profile facts
+CREATE TABLE IF NOT EXISTS profile_facts (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL,
+    fact TEXT NOT NULL,
+    category TEXT NOT NULL,
+    confidence REAL DEFAULT 0.5,
+    is_static INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL,
+    last_observed TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_profile_facts_agent ON profile_facts(agent_id);
+CREATE INDEX IF NOT EXISTS idx_profile_facts_category ON profile_facts(agent_id, category);
+CREATE INDEX IF NOT EXISTS idx_profile_facts_static ON profile_facts(agent_id, is_static);
+CREATE INDEX IF NOT EXISTS idx_profile_facts_confidence ON profile_facts(agent_id, confidence DESC);
+
+-- ============================================================
+-- V3: METACOGNITION TABLES (confidence, learning goals, calibration)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS confidence_map (
+    id TEXT PRIMARY KEY,
+    domain TEXT NOT NULL UNIQUE,
+    confidence REAL NOT NULL DEFAULT 0.0,
+    episode_count INTEGER NOT NULL DEFAULT 0,
+    procedure_count INTEGER NOT NULL DEFAULT 0,
+    last_activity TEXT,
+    trend TEXT DEFAULT 'stable',
+    trend_delta REAL DEFAULT 0.0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS learning_goals (
+    id TEXT PRIMARY KEY,
+    domain TEXT NOT NULL,
+    goal TEXT NOT NULL,
+    strategy TEXT,
+    priority REAL NOT NULL DEFAULT 0.5,
+    status TEXT NOT NULL DEFAULT 'active',
+    episodes_needed INTEGER DEFAULT 3,
+    episodes_collected INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    resolved_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_learning_goals_status ON learning_goals(status);
+CREATE INDEX IF NOT EXISTS idx_learning_goals_domain ON learning_goals(domain);
+
+CREATE TABLE IF NOT EXISTS calibration_log (
+    id TEXT PRIMARY KEY,
+    procedure_id TEXT NOT NULL,
+    predicted_confidence REAL NOT NULL,
+    actual_outcome INTEGER NOT NULL,
+    timestamp TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS self_evaluations (
+    id TEXT PRIMARY KEY,
+    timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+    top_domains TEXT NOT NULL,
+    weak_domains TEXT NOT NULL,
+    improving TEXT NOT NULL,
+    declining TEXT NOT NULL,
+    insights TEXT
+);
+
+-- ============================================================
+-- V3: TRANSFER TABLES (agent profiles, transfer log, tool usage)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS agent_profiles (
+    agent_id TEXT PRIMARY KEY,
+    agent_name TEXT,
+    tools TEXT NOT NULL DEFAULT '[]',
+    context_format TEXT,
+    model_family TEXT,
+    max_context INTEGER,
+    supports_images INTEGER DEFAULT 0,
+    capabilities TEXT DEFAULT '{}',
+    first_seen TEXT NOT NULL DEFAULT (datetime('now')),
+    last_seen TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS transfer_log (
+    id TEXT PRIMARY KEY,
+    procedure_id TEXT NOT NULL,
+    source_agent TEXT NOT NULL,
+    target_agent TEXT NOT NULL,
+    similarity_score REAL NOT NULL,
+    transfer_confidence REAL NOT NULL,
+    adapted INTEGER NOT NULL DEFAULT 0,
+    adaptation_details TEXT,
+    outcome TEXT DEFAULT 'pending',
+    timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (procedure_id) REFERENCES procedures(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_transfer_log_procedure ON transfer_log(procedure_id);
+CREATE INDEX IF NOT EXISTS idx_transfer_log_agents ON transfer_log(source_agent, target_agent);
+
+CREATE TABLE IF NOT EXISTS tool_usage (
+    agent_id TEXT NOT NULL,
+    tool_name TEXT NOT NULL,
+    usage_count INTEGER NOT NULL DEFAULT 1,
+    last_seen TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (agent_id, tool_name),
+    FOREIGN KEY (agent_id) REFERENCES agent_profiles(agent_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_tool_usage_agent ON tool_usage(agent_id);
+CREATE INDEX IF NOT EXISTS idx_tool_usage_count ON tool_usage(usage_count DESC);
 """
 
 
 def init_db(conn) -> None:
-    """Initialize the database with the V2 schema."""
+    """Initialize the database schema.
+    
+    Creates all tables, indexes, FTS virtual tables, and triggers.
+    Safe to call multiple times (CREATE IF NOT EXISTS).
+    """
     conn.executescript(SCHEMA_SQL)
-
-    # Migrate existing agent_profiles table to add profile columns
-    # (only if table already exists without them — new DBs get them in CREATE)
-    existing_cols = {
-        row[1]
-        for row in conn.execute("PRAGMA table_info(agent_profiles)").fetchall()
-    }
-    for col in ("static_facts", "dynamic_context", "last_updated"):
-        if col not in existing_cols:
-            default = "'[]'" if col != "last_updated" else "NULL"
-            conn.execute(f"ALTER TABLE agent_profiles ADD COLUMN {col} TEXT DEFAULT {default}")
-
     conn.execute(
-        "INSERT OR REPLACE INTO schema_meta (key, value) VALUES (?, ?)",
-        ("version", str(SCHEMA_VERSION)),
+        "INSERT OR REPLACE INTO schema_meta (key, value) VALUES ('version', ?)",
+        (str(SCHEMA_VERSION),),
     )
     conn.commit()
