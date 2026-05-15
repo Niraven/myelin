@@ -190,17 +190,23 @@ class Database:
         fts_table: str,
         query: str,
         limit: int = 10,
+        where: str | None = None,
+        where_params: tuple[Any, ...] = (),
     ) -> list[dict[str, Any]]:
+        where_clause = f"AND ({where})" if where else ""
         sql = f"""
             SELECT t.*, rank
             FROM {fts_table} fts
             JOIN {table} t ON t.rowid = fts.rowid
-            WHERE {fts_table} MATCH ?
+            WHERE {fts_table} MATCH ? {where_clause}
             ORDER BY rank
             LIMIT ?
         """
         safe_query = escape_fts_query(query)
-        return self.fetchall(sql, (safe_query, limit))
+        params: list[Any] = [safe_query]
+        params.extend(where_params)
+        params.append(limit)
+        return self.fetchall(sql, tuple(params))
 
     # ── Vector search (requires sqlite-vec) ────────────────────
 
@@ -211,12 +217,13 @@ class Database:
         query_vec: list[float],
         limit: int = 10,
         where: str | None = None,
+        where_params: tuple[Any, ...] = (),
     ) -> list[dict[str, Any]]:
         if not self._vec_available:
             return []
 
         query_blob = _serialize_f32(query_vec)
-        where_clause = f"AND {where}" if where else ""
+        where_clause = f"AND ({where})" if where else ""
 
         sql = f"""
             SELECT t.*, vec_distance_cosine(t.{embedding_col}, ?) as distance
@@ -225,7 +232,10 @@ class Database:
             ORDER BY distance ASC
             LIMIT ?
         """
-        return self.fetchall(sql, (query_blob, limit))
+        params: list[Any] = [query_blob]
+        params.extend(where_params)
+        params.append(limit)
+        return self.fetchall(sql, tuple(params))
 
     # ── Hybrid search (FTS + vector) ───────────────────────────
 
@@ -239,14 +249,16 @@ class Database:
         text_weight: float = 0.4,
         vec_weight: float = 0.6,
         embedding_col: str = "embedding",
+        where: str | None = None,
+        where_params: tuple[Any, ...] = (),
     ) -> list[dict[str, Any]]:
-        fts_results = self.fts_search(table, fts_table, text_query, limit=limit * 2)
+        fts_results = self.fts_search(table, fts_table, text_query, limit=limit * 2, where=where, where_params=where_params)
 
         if not query_vec or not self._vec_available:
             return fts_results[:limit]
 
         fts_ids = {r["id"]: i for i, r in enumerate(fts_results)}
-        vec_results = self.vec_search(table, embedding_col, query_vec, limit=limit * 2)
+        vec_results = self.vec_search(table, embedding_col, query_vec, limit=limit * 2, where=where, where_params=where_params)
         vec_ids = {r["id"]: i for i, r in enumerate(vec_results)}
 
         all_ids = set(fts_ids.keys()) | set(vec_ids.keys())

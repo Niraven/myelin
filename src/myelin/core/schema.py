@@ -250,6 +250,19 @@ CREATE TABLE IF NOT EXISTS transfer_log (
 CREATE INDEX IF NOT EXISTS idx_transfer_log_procedure ON transfer_log(procedure_id);
 CREATE INDEX IF NOT EXISTS idx_transfer_log_agents ON transfer_log(source_agent, target_agent);
 
+-- Tool usage tracking per agent (auto-discovered from episodes)
+CREATE TABLE IF NOT EXISTS tool_usage (
+    agent_id TEXT NOT NULL,
+    tool_name TEXT NOT NULL,
+    usage_count INTEGER NOT NULL DEFAULT 1,
+    last_seen TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (agent_id, tool_name),
+    FOREIGN KEY (agent_id) REFERENCES agent_profiles(agent_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_tool_usage_agent ON tool_usage(agent_id);
+CREATE INDEX IF NOT EXISTS idx_tool_usage_count ON tool_usage(usage_count DESC);
+
 -- ============================================================
 -- COGNITIVE PROCESSES
 -- Background process state and scheduling.

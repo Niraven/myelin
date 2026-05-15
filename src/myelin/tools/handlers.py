@@ -222,6 +222,12 @@ class ToolHandlers:
             domain=episode.domain,
         )
 
+        self.profiler.learn_from_episode({
+            "agent_id": episode.agent_id,
+            "action": episode.action,
+            "content_text": episode.content_text,
+        })
+
         if episode.domain:
             self.confidence_map.update_domain(episode.domain, episode_delta=1)
 
@@ -276,6 +282,7 @@ class ToolHandlers:
         agent_id: str | None = None,
         max_memories: int = 10,
         max_procedures: int = 3,
+        agent_ids: list[str] | None = None,
     ) -> dict[str, Any]:
         """Assemble complete context for the current situation."""
         return self.assembler.assemble(
@@ -284,6 +291,7 @@ class ToolHandlers:
             agent_id=agent_id,
             max_memories=max_memories,
             max_procedures=max_procedures,
+            agent_ids=agent_ids,
         )
 
     # ── 4. myelin_execute_procedure ───────────────────────────
@@ -497,6 +505,8 @@ class ToolHandlers:
         domain: str | None = None,
         weights: dict[str, float] | None = None,
         synthesize: bool = False,
+        agent_ids: list[str] | None = None,
+        agent_id: str | None = None,
     ) -> dict[str, Any]:
         """Multi-signal retrieval across all memory types."""
         query_vec = self.embedder.embed(query) or None
@@ -506,6 +516,8 @@ class ToolHandlers:
             domain=domain,
             limit=limit,
             weights=weights,
+            agent_ids=agent_ids,
+            querying_agent_id=agent_id,
         )
         raw_results = [
             {
@@ -514,6 +526,7 @@ class ToolHandlers:
                 "content": r.get("content_text") or r.get("content") or r.get("name", ""),
                 "composite_score": r.get("_composite_score", 0),
                 "scores": r.get("_scores", {}),
+                "source_agent": r.get("source_agent", "unknown"),
             }
             for r in results
         ]

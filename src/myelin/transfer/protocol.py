@@ -2,7 +2,7 @@
 
 Handles the full transfer lifecycle: packaging a procedure from the source
 agent, adapting it for the target agent's capabilities, and importing it
-with discounted confidence based on agent similarity.
+with discounted confidence based on adaptation complexity.
 
 Differentiator: no other memory system does real cross-agent transfer.
 mem0 is single-agent. hermes-lcm is single-agent. Myelin treats
@@ -26,6 +26,7 @@ from ..core.models import (
     StepType,
 )
 from ..memory.procedural import ProceduralMemory
+from .adaptation import StepAdaptationEngine
 from .profiling import AgentProfiler
 
 
@@ -36,6 +37,7 @@ class TransferProtocol:
         self.db = db
         self.procedural = procedural
         self.profiler = AgentProfiler(db)
+        self.adaptation_engine = StepAdaptationEngine()
 
     def export_procedure(
         self,
@@ -46,7 +48,7 @@ class TransferProtocol:
         """Package a procedure for transfer to another agent.
 
         Returns a self-contained transfer package with the procedure,
-        source agent profile, and computed transfer confidence.
+        source agent profile, capability analysis, and computed transfer confidence.
         """
         proc = self.procedural.get(procedure_id)
         if not proc:
@@ -62,7 +64,37 @@ class TransferProtocol:
         if isinstance(steps, str):
             steps = json.loads(steps)
 
-        adapted_steps, adaptation_notes = self._adapt_steps(steps, source_profile, target_profile)
+        # Normalize steps
+        normalized_steps = [_normalize_step(step) for step in steps]
+
+        # Capability analysis
+        required_tools = self.adaptation_engine.analyze_requirements(
+            {"steps": normalized_steps}
+        )
+
+        if not target_profile:
+            adapted_steps = normalized_steps
+            adaptation_notes = ["No target profile available, using original steps"]
+            adaptation_results = []
+        else:
+            target_capabilities = self.profiler.get_toolset(target_agent, min_usage=1)
+            target_tool_names = [c.tool_name for c in target_capabilities]
+
+            if not target_tool_names:
+                adapted_steps = normalized_steps
+                adaptation_notes = ["Target agent tools unknown, using original steps"]
+                adaptation_results = []
+            else:
+                adapted_steps, adaptation_results, adaptation_notes = (
+                    self.adaptation_engine.adapt_procedure(
+                        normalized_steps, target_tool_names
+                    )
+                )
+
+        # Compute adaptation summary
+        changed_count = sum(1 for r in adaptation_results if r.changed)
+        flagged_count = sum(1 for r in adaptation_results if r.flag)
+        unchanged_count = len(adaptation_results) - changed_count - flagged_count
 
         package = {
             "transfer_id": uuid4().hex[:16],
@@ -70,7 +102,7 @@ class TransferProtocol:
             "procedure_name": proc["name"],
             "description": proc.get("description", ""),
             "trigger_pattern": proc["trigger_pattern"],
-            "original_steps": steps,
+            "original_steps": normalized_steps,
             "adapted_steps": adapted_steps,
             "preconditions": _parse_json(proc.get("preconditions", "[]")),
             "postconditions": _parse_json(proc.get("postconditions", "[]")),
@@ -80,6 +112,17 @@ class TransferProtocol:
             "transfer_confidence": t_confidence,
             "agent_similarity": similarity,
             "adaptation_notes": adaptation_notes,
+            "capability_analysis": {
+                "required_tools": required_tools,
+                "target_tools_available": [
+                    c.tool_name for c in self.profiler.get_toolset(target_agent)
+                ]
+                if target_profile
+                else [],
+                "steps_changed": changed_count,
+                "steps_flagged": flagged_count,
+                "steps_unchanged": unchanged_count,
+            },
             "domain": proc.get("domain"),
             "exported_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
             "success": True,
@@ -95,9 +138,34 @@ class TransferProtocol:
         """Import a transferred procedure, adapting and storing it.
 
         Creates a new procedure owned by the target agent with discounted
-        confidence and tracks the transfer in the transfer log.
+        confidence based on adaptation complexity and tracks the transfer
+        in the transfer log.
         """
         steps = package.get("adapted_steps") or package.get("original_steps", [])
+
+        # Rebuild adaptation results from package for confidence calibration
+        analysis = package.get("capability_analysis", {})
+        changed = analysis.get("steps_changed", 0)
+        flagged = analysis.get("steps_flagged", 0)
+        total = changed + flagged + analysis.get("steps_unchanged", len(steps))
+
+        base_confidence = package.get("transfer_confidence", 0.3)
+
+        # Apply confidence discount
+        if flagged > 0:
+            discount = 0.4
+            status = ProcedureStatus.DRAFT
+        elif changed == 0:
+            discount = 1.0
+            status = ProcedureStatus.ACTIVE
+        elif changed <= 2:
+            discount = 0.8
+            status = ProcedureStatus.DRAFT
+        else:
+            discount = 0.6
+            status = ProcedureStatus.DRAFT
+
+        final_confidence = base_confidence * discount
 
         procedure = Procedure(
             name=package["procedure_name"],
@@ -117,10 +185,10 @@ class TransferProtocol:
             ],
             preconditions=package.get("preconditions", []),
             postconditions=package.get("postconditions", []),
-            confidence=package.get("transfer_confidence", 0.3),
+            confidence=final_confidence,
             source_agent=agent_id,
             promotion_method=PromotionMethod.TRANSFERRED,
-            status=ProcedureStatus.DRAFT,
+            status=status,
             domain=package.get("domain"),
             source_episodes=[],
         )
@@ -132,15 +200,25 @@ class TransferProtocol:
             source_agent=package["source_agent"],
             target_agent=agent_id,
             source_confidence=package.get("source_confidence", 0.5),
+            adapted=changed > 0 or flagged > 0,
+            adaptation_details={
+                "steps_changed": changed,
+                "steps_flagged": flagged,
+                "discount": discount,
+                "final_confidence": final_confidence,
+            },
         )
 
         return {
             "success": True,
             "new_procedure_id": proc_id,
             "name": package["procedure_name"],
-            "transfer_confidence": package.get("transfer_confidence", 0.3),
-            "status": "draft",
+            "transfer_confidence": final_confidence,
+            "base_confidence": base_confidence,
+            "discount": discount,
+            "status": status.value,
             "adaptation_notes": package.get("adaptation_notes", []),
+            "review_needed": flagged > 0,
         }
 
     def get_transferable_procedures(
@@ -218,85 +296,6 @@ class TransferProtocol:
 
         results.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
         return results
-
-    def _adapt_steps(
-        self,
-        steps: list[dict | str],
-        source_profile: dict | None,
-        target_profile: dict | None,
-    ) -> tuple[list[dict], list[str]]:
-        """Adapt procedure steps based on target agent capabilities.
-
-        Returns (adapted_steps, adaptation_notes).
-        """
-        if not target_profile:
-            return [_normalize_step(step) for step in steps], [
-                "No target profile available, using original steps"
-            ]
-
-        target_tools = set()
-        tools_raw = target_profile.get("tools", "[]")
-        if isinstance(tools_raw, str):
-            target_tools = set(json.loads(tools_raw))
-        elif isinstance(tools_raw, list):
-            target_tools = set(tools_raw)
-
-        if not target_tools:
-            return [_normalize_step(step) for step in steps], [
-                "Target agent tools unknown, using original steps"
-            ]
-
-        adapted = []
-        notes = []
-
-        for step in steps:
-            if isinstance(step, str):
-                adapted.append({"description": step, "type": "core"})
-                continue
-
-            desc = step.get("description", "")
-            step_copy = dict(step)
-
-            tool_refs = _extract_tool_references(desc)
-            missing_tools = tool_refs - target_tools
-
-            if missing_tools:
-                step_copy["_missing_tools"] = list(missing_tools)
-                step_copy["type"] = "variant"
-                notes.append(
-                    f"Step '{desc[:50]}' uses tools not available to target: "
-                    f"{', '.join(missing_tools)}"
-                )
-
-            adapted.append(step_copy)
-
-        if not notes:
-            notes.append("All steps compatible with target agent")
-
-        return adapted, notes
-
-
-def _extract_tool_references(text: str) -> set[str]:
-    """Extract tool/command references from step description."""
-    import re
-
-    tools = set()
-    patterns = [
-        r"\b(git\s+\w+)",
-        r"\b(npm\s+\w+)",
-        r"\b(docker\s+\w+)",
-        r"\b(kubectl\s+\w+)",
-        r"\b(pip\s+\w+)",
-        r"\b(cargo\s+\w+)",
-        r"\b(make\b)",
-        r"\b(pytest\b)",
-        r"\b(curl\b)",
-        r"\b(wget\b)",
-    ]
-    for pat in patterns:
-        for match in re.finditer(pat, text, re.IGNORECASE):
-            tools.add(match.group(1).lower().strip())
-    return tools
 
 
 def _normalize_step(step: dict | str) -> dict[str, Any]:

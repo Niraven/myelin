@@ -63,8 +63,19 @@ class EpisodicMemory:
         text_query: str,
         query_vec: list[float] | None = None,
         limit: int = 10,
+        agent_ids: list[str] | None = None,
     ) -> list[dict[str, Any]]:
-        return self.db.hybrid_search("episodes", "episodes_fts", text_query, query_vec, limit=limit)
+        """Hybrid search optionally filtered by agent IDs."""
+        where = None
+        where_params: tuple[Any, ...] = ()
+        if agent_ids and agent_ids != ["*"]:
+            placeholders = ",".join("?" for _ in agent_ids)
+            where = f"agent_id IN ({placeholders})"
+            where_params = tuple(agent_ids)
+        return self.db.hybrid_search(
+            "episodes", "episodes_fts", text_query, query_vec, limit=limit,
+            where=where, where_params=where_params,
+        )
 
     def get_unconsolidated(self, limit: int = 50) -> list[dict[str, Any]]:
         return self.db.fetchall(

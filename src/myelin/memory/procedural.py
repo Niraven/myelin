@@ -53,11 +53,18 @@ class ProceduralMemory:
         query_vec: list[float] | None = None,
         limit: int = 5,
         min_confidence: float = 0.3,
+        agent_ids: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         """Find procedures matching a trigger pattern."""
+        where = None
+        where_params: tuple[Any, ...] = ()
+        if agent_ids and agent_ids != ["*"]:
+            placeholders = ",".join("?" for _ in agent_ids)
+            where = f"source_agent IN ({placeholders})"
+            where_params = tuple(agent_ids)
         results = self.db.hybrid_search(
             "procedures", "procedures_fts", text_query, query_vec, limit=limit * 2,
-            embedding_col="trigger_embedding",
+            embedding_col="trigger_embedding", where=where, where_params=where_params,
         )
         filtered = [
             r

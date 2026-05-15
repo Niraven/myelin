@@ -59,6 +59,7 @@ class ContextAssembler:
         include_graph: bool = True,
         include_temporal: bool = True,
         include_confidence: bool = True,
+        agent_ids: list[str] | None = None,
     ) -> dict[str, Any]:
         """Assemble a complete context block for the given query.
 
@@ -72,9 +73,11 @@ class ContextAssembler:
             query_embedding=query_embedding,
             domain=domain,
             limit=max_memories,
+            agent_ids=agent_ids,
+            querying_agent_id=agent_id,
         )
 
-        procedures = self._find_procedures(query, query_embedding, max_procedures)
+        procedures = self._find_procedures(query, query_embedding, max_procedures, agent_ids=agent_ids)
 
         query_entities = extract_entities_from_text(query)
         entity_context = self._build_entity_context(
@@ -101,6 +104,7 @@ class ContextAssembler:
                     "content": m.get("content_text") or m.get("content") or m.get("name", ""),
                     "score": m.get("_composite_score", 0.0),
                     "scores": m.get("_scores", {}),
+                    "source_agent": m.get("source_agent", "unknown"),
                 }
                 for m in memories
             ],
@@ -117,9 +121,9 @@ class ContextAssembler:
         }
 
     def _find_procedures(
-        self, query: str, embedding: list[float] | None, limit: int
+        self, query: str, embedding: list[float] | None, limit: int, agent_ids: list[str] | None = None
     ) -> list[dict[str, Any]]:
-        matches = self.procedural.find_matching(query, embedding, limit=limit)
+        matches = self.procedural.find_matching(query, embedding, limit=limit, agent_ids=agent_ids)
         results = []
         for m in matches:
             steps = m.get("steps", "[]")

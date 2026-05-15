@@ -166,6 +166,11 @@ TOOLS = [
                 "agent_id": {"type": "string"},
                 "max_memories": {"type": "integer", "default": 10},
                 "max_procedures": {"type": "integer", "default": 3},
+                "agent_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Filter by agent IDs. Omit or ['*'] for all agents.",
+                },
             },
             "required": ["query"],
         },
@@ -266,6 +271,15 @@ TOOLS = [
                     "type": "boolean",
                     "default": False,
                     "description": "When true, synthesize top results into a concise answer with citations",
+                },
+                "agent_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Filter by agent IDs. Omit or ['*'] for all agents.",
+                },
+                "agent_id": {
+                    "type": "string",
+                    "description": "Querying agent ID for confidence calibration.",
                 },
             },
             "required": ["query"],

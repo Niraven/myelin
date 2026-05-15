@@ -50,6 +50,8 @@ class MultiSignalRetriever:
         include_procedures: bool = True,
         include_semantic: bool = True,
         include_episodes: bool = True,
+        agent_ids: list[str] | None = None,
+        querying_agent_id: str | None = None,
     ) -> list[dict[str, Any]]:
         """Multi-signal retrieval across all memory types.
 
@@ -67,13 +69,13 @@ class MultiSignalRetriever:
         candidates: dict[str, dict[str, Any]] = {}
 
         if include_episodes:
-            self._add_episode_candidates(query, query_embedding, domain, candidates, limit * 3)
+            self._add_episode_candidates(query, query_embedding, domain, candidates, limit * 3, agent_ids=agent_ids)
 
         if include_semantic:
             self._add_semantic_candidates(query, query_embedding, domain, candidates, limit * 3)
 
         if include_procedures:
-            self._add_procedure_candidates(query, query_embedding, domain, candidates, limit * 3)
+            self._add_procedure_candidates(query, query_embedding, domain, candidates, limit * 3, agent_ids=agent_ids)
 
         query_entities = extract_entities_from_text(query)
         entity_boost_ids = set()
@@ -114,7 +116,21 @@ class MultiSignalRetriever:
                 "activation": activation_score,
                 "importance": importance_score,
             }
-            scored.append((composite, result))
+            result["source_agent"] = candidate.get("agent_id") or candidate.get("source_agent", "unknown")
+
+            # Cross-agent confidence discount
+            if querying_agent_id:
+                source = result["source_agent"]
+                if source == querying_agent_id:
+                    multiplier = 1.0
+                elif source != "unknown":
+                    multiplier = 0.85
+                else:
+                    multiplier = 0.7
+                result["_composite_score"] *= multiplier
+                result["_scores"]["cross_agent_discount"] = multiplier
+
+            scored.append((result["_composite_score"], result))
 
         scored.sort(key=lambda x: x[0], reverse=True)
         return [r for _, r in scored[:limit]]
@@ -126,8 +142,16 @@ class MultiSignalRetriever:
         domain: str | None,
         candidates: dict[str, dict],
         limit: int,
+        agent_ids: list[str] | None = None,
     ) -> None:
-        fts = self.db.fts_search("episodes", "episodes_fts", query, limit=limit)
+        where = None
+        where_params: tuple[Any, ...] = ()
+        if agent_ids and agent_ids != ["*"]:
+            placeholders = ",".join("?" for _ in agent_ids)
+            where = f"agent_id IN ({placeholders})"
+            where_params = tuple(agent_ids)
+
+        fts = self.db.fts_search("episodes", "episodes_fts", query, limit=limit, where=where, where_params=where_params)
         for i, row in enumerate(fts):
             rid = row["id"]
             if rid not in candidates:
@@ -136,7 +160,7 @@ class MultiSignalRetriever:
             candidates[rid]["_text_score"] = 1.0 - (i / max(len(fts), 1))
 
         if embedding and self.db.vec_available:
-            vec = self.db.vec_search("episodes", "embedding", embedding, limit=limit)
+            vec = self.db.vec_search("episodes", "embedding", embedding, limit=limit, where=where, where_params=where_params)
             for i, row in enumerate(vec):
                 rid = row["id"]
                 if rid not in candidates:
@@ -167,8 +191,16 @@ class MultiSignalRetriever:
         domain: str | None,
         candidates: dict[str, dict],
         limit: int,
+        agent_ids: list[str] | None = None,
     ) -> None:
-        fts = self.db.fts_search("procedures", "procedures_fts", query, limit=limit)
+        where = None
+        where_params: tuple[Any, ...] = ()
+        if agent_ids and agent_ids != ["*"]:
+            placeholders = ",".join("?" for _ in agent_ids)
+            where = f"source_agent IN ({placeholders})"
+            where_params = tuple(agent_ids)
+
+        fts = self.db.fts_search("procedures", "procedures_fts", query, limit=limit, where=where, where_params=where_params)
         for i, row in enumerate(fts):
             rid = row["id"]
             if rid not in candidates:
