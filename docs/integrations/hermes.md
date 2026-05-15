@@ -4,6 +4,10 @@ Hermes operates. Myelin learns the operating procedures.
 
 Use Myelin as a procedural learning layer beside Hermes, not as a replacement for Hermes memory, task management, cron, Kanban, skills, or routing.
 
+Reference: [Hermes MCP docs](https://hermes-agent.nousresearch.com/docs/user-guide/features/mcp).
+
+Current Myelin transport is stdio MCP. Hermes supports local stdio MCP servers and remote HTTP MCP servers; use stdio for Myelin today. Do not point Hermes at a Myelin port or URL unless you are running a separate bridge.
+
 ## Integration Boundary
 
 Hermes should own:
@@ -45,7 +49,7 @@ python -m myelin.server --help
 
 ## MCP Server
 
-Start with a local SQLite database dedicated to Hermes:
+Start with a local SQLite database dedicated to Hermes. Use a disposable database first, then migrate to a long-term database after the base loop behaves correctly:
 
 ```json
 {
@@ -57,7 +61,7 @@ Start with a local SQLite database dedicated to Hermes:
         "myelin.server",
         "--db",
         "/absolute/path/to/hermes-myelin.db",
-        "--embeddings",
+        "--embedding-model",
         "none"
       ],
       "env": {}
@@ -91,6 +95,8 @@ Defer these until the base loop is proven:
 - `myelin_transfer_import`
 - `myelin_transfer_discover`
 - broad graph/entity exploration tools for untrusted channels
+
+Keep `myelin_teach`, `myelin_profile`, and visualization tools behind trusted operator flows until the database contains useful signal.
 
 ## Hermes Call Pattern
 
@@ -132,6 +138,8 @@ During the task:
 
 For bursts of events from a Hermes workflow, prefer `myelin_observe_batch` with the same event shape in an `events` array. It records valid events in one SQLite transaction and returns per-event failures without discarding the valid observations.
 
+Do not send full raw logs as `content_text`. Store concise summaries, important error strings, tool names, file paths, and result metadata.
+
 After a task:
 
 ```json
@@ -167,6 +175,8 @@ Hermes should treat Myelin responses by trust band:
 | `trusted` | Prefer as default workflow for matching tasks. |
 | `low_confidence` | Mention only as historical context. |
 | `unvalidated` | Keep observing. |
+
+Call `myelin_context` at task boundaries, not before every Hermes model turn. Call `myelin_sleep` at session end or during scheduled maintenance. Send `myelin_procedure_feedback` whenever Hermes follows a learned procedure.
 
 ## Procedure To Skill Bridge
 

@@ -72,3 +72,31 @@ ai-agents, mcp, memory, procedural-memory, cognitive-architecture, sqlite, agent
 ```
 
 Use `assets/brand/social-preview.png` for the repository social preview. It uses the Greek-tech myelin sheath direction and is sized at 1280x640. GitHub repository settings require uploading the image manually.
+
+## HyperFrames Video
+
+Use `assets/hyperframes/myelin-launch/` as the source for a short launch video.
+
+Recommended title:
+
+```text
+Myelin: agents should not relearn the same workflow twice
+```
+
+Recommended caption:
+
+```text
+Most memory tools retrieve facts. Myelin learns procedures.
+
+It watches repeated agent workflows, aligns action sequences, promotes the shared pattern into an executable procedure, and updates confidence with feedback.
+
+Local-first. SQLite-backed. MCP-native. No LLM required for core learning.
+```
+
+Recommended structure:
+
+1. Brand hook: `mem0 remembers. Myelin learns.`
+2. Problem: agents repeat deploy, CI, research, and release workflows.
+3. Mechanism: observe -> align -> promote -> execute -> feedback.
+4. Distribution: Hermes, Codex, Claude Code, OpenClaw, and generic MCP clients.
+5. Close: local-first procedural learning for AI agents.

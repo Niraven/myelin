@@ -28,8 +28,11 @@ Myelin can learn from any AI system that emits structured observations: single a
 - Read the launch plan: [docs/LAUNCH_PLAN.md](docs/LAUNCH_PLAN.md)
 - Use the launch copy: [docs/LAUNCH_KIT.md](docs/LAUNCH_KIT.md)
 - Use the brand assets: [docs/BRAND.md](docs/BRAND.md)
+- Use the launch video source: [assets/hyperframes/myelin-launch](assets/hyperframes/myelin-launch)
+- Read the changelog: [CHANGELOG.md](CHANGELOG.md)
 - Understand the lineage: [docs/LINEAGE.md](docs/LINEAGE.md)
 - Compare the category: [docs/COMPARISONS.md](docs/COMPARISONS.md)
+- Integrate agents: [docs/integrations/README.md](docs/integrations/README.md)
 - Wire Hermes: [docs/integrations/hermes.md](docs/integrations/hermes.md)
 - Emit observations: [docs/OBSERVATION_SCHEMA.md](docs/OBSERVATION_SCHEMA.md)
 - Benchmark locally: [docs/PERFORMANCE.md](docs/PERFORMANCE.md)
@@ -127,6 +130,44 @@ This simulates Hermes coordinating research, build, and release agents across no
 - Capability-aware step adaptation
 - Confidence discounting based on agent similarity
 
+## How Agents Use Myelin
+
+Myelin is a shared procedural learning layer underneath agent runtimes. It does not watch processes automatically, and it does not replace the agent or orchestrator. Agents explicitly call Myelin through MCP when they need context, when they finish useful actions, and when they want to reuse a learned workflow.
+
+Current transport: Myelin ships as a local stdio MCP server using `python -m myelin.server`. Remote HTTP or Streamable HTTP transport is useful for shared network services, but it is not part of the current server yet.
+
+The normal learning loop:
+
+```text
+agent plans task
+  -> myelin_context at task boundary
+  -> myelin_observe_batch during workflow
+  -> myelin_sleep at session end
+  -> myelin_execute_procedure on repeated task
+  -> myelin_procedure_feedback after execution
+```
+
+The cross-agent transfer loop:
+
+```text
+source agent learns procedure
+  -> myelin_transfer_discover checks fit
+  -> myelin_transfer_export packages intent and evidence
+  -> myelin_transfer_import creates target draft with confidence discount
+  -> target agent runs, reports feedback, and calibrates confidence
+```
+
+Start with a small tool allowlist: `myelin_context`, `myelin_observe`, `myelin_observe_batch`, `myelin_execute_procedure`, `myelin_procedure_feedback`, `myelin_status`, and `myelin_sleep`. Keep transfer, graph, teach, and profile tools gated until the integration is trusted.
+
+Integration guides:
+
+- [Universal MCP guide](docs/integrations/README.md)
+- [Hermes](docs/integrations/hermes.md)
+- [Codex](docs/integrations/codex.md)
+- [Claude Code](docs/integrations/claude-code.md)
+- [OpenClaw](docs/integrations/openclaw.md)
+- [Generic MCP clients](docs/integrations/generic-mcp.md)
+
 ## Quick Start
 
 ### Install
@@ -144,12 +185,14 @@ Add to your MCP client config:
   "mcpServers": {
     "myelin": {
       "command": "python",
-      "args": ["-m", "myelin.server"],
+      "args": ["-m", "myelin.server", "--embedding-model", "none"],
       "env": {}
     }
   }
 }
 ```
+
+This is a stdio MCP server. Do not configure it as an HTTP URL unless you run it behind a separate bridge.
 
 ### Verify Procedure Learning
 

@@ -12,8 +12,8 @@ Do not publish speed comparisons against Mnemosyne, Noxem, Supermemory, Honcho, 
 
 | Mode | Embeddings | Best for | Notes |
 |---|---|---|---|
-| Fast trace | `--embeddings none` | Hermes/Codex tool events, CI repair, deployment traces, swarm action logs | Default launch mode. Uses SQLite + FTS5 only. |
-| Semantic | `--embeddings local` | Richer natural-language recall over long notes or summaries | Requires `pip install "myelin-memory[embeddings]"`. |
+| Fast trace | `--embedding-model none` | Hermes/Codex tool events, CI repair, deployment traces, swarm action logs | Default launch mode. Uses SQLite + FTS5 only. |
+| Semantic | `--embedding-model local` | Richer natural-language recall over long notes or summaries | Requires `pip install "myelin-memory[embeddings]"`. |
 | Hybrid | FTS first, embeddings where useful | Mixed procedural traces and semantic notes | Keep action traces no-embedding unless semantic recall quality matters. |
 
 ## Benchmark
@@ -50,3 +50,14 @@ Use both:
 - **Agent speed:** fewer planning, investigation, and repeated workflow steps after Myelin learns a procedure.
 
 The benchmark uses no embeddings by default because action traces are structured and should not pay model latency on every observation.
+
+## MCP Token Budget
+
+Myelin should make agents faster, not add constant context overhead.
+
+- Observe frequently, but return small observation acknowledgements.
+- Batch workflow events with `myelin_observe_batch`.
+- Call `myelin_context` at task boundaries, not every model turn.
+- Keep `max_memories` and `max_procedures` low for coding agents until the database has useful signal.
+- Store concise summaries in `content_text`; keep huge logs, artifacts, and raw outputs outside Myelin.
+- Use `myelin_execute_procedure` when the task resembles a repeated workflow, then always send feedback.

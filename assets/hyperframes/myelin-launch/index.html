@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Myelin Launch</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        background: #08111f;
+        overflow: hidden;
+      }
+
+      [data-composition-id="myelin-launch"] {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background:
+          radial-gradient(circle at 20% 50%, rgba(45, 212, 191, 0.18), transparent 26%),
+          radial-gradient(circle at 75% 35%, rgba(233, 169, 54, 0.12), transparent 28%),
+          linear-gradient(135deg, #08111f 0%, #101d2f 100%);
+        color: #f8fafc;
+        font-family: SFMono-Regular, Menlo, Consolas, monospace;
+      }
+
+      .frame {
+        position: absolute;
+        inset: 28px;
+        border: 2px solid rgba(233, 169, 54, 0.58);
+        box-shadow: inset 0 0 40px rgba(45, 212, 191, 0.08);
+      }
+
+      .meander {
+        position: absolute;
+        left: 46px;
+        right: 46px;
+        height: 28px;
+        border-top: 4px double rgba(233, 169, 54, 0.75);
+        border-bottom: 4px double rgba(233, 169, 54, 0.75);
+      }
+
+      .meander.top {
+        top: 48px;
+      }
+
+      .meander.bottom {
+        bottom: 48px;
+      }
+
+      .scene {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 120px 150px;
+        box-sizing: border-box;
+      }
+
+      .hero {
+        display: grid;
+        grid-template-columns: 560px 1fr;
+        align-items: center;
+        gap: 92px;
+        width: 100%;
+      }
+
+      .sigil {
+        position: relative;
+        width: 520px;
+        height: 520px;
+        border-radius: 50%;
+        border: 42px solid #e9a936;
+        border-right-color: transparent;
+        box-shadow:
+          0 0 48px rgba(233, 169, 54, 0.26),
+          inset 0 0 40px rgba(8, 17, 31, 0.8);
+      }
+
+      .sigil::before {
+        content: "";
+        position: absolute;
+        inset: 108px;
+        border: 8px solid rgba(45, 212, 191, 0.85);
+        border-left-color: transparent;
+        border-bottom-color: transparent;
+        border-radius: 50%;
+        filter: drop-shadow(0 0 18px rgba(45, 212, 191, 0.8));
+        transform: rotate(-28deg);
+      }
+
+      .sigil::after {
+        content: "";
+        position: absolute;
+        top: 74px;
+        right: 36px;
+        width: 70px;
+        height: 34px;
+        border-radius: 50% 70% 60% 40%;
+        background: #f8d36a;
+        box-shadow: 0 0 24px rgba(248, 211, 106, 0.42);
+        transform: rotate(28deg);
+      }
+
+      .copy {
+        display: flex;
+        flex-direction: column;
+        gap: 28px;
+      }
+
+      .eyebrow,
+      .terminal {
+        color: #2dd4bf;
+        font-size: 32px;
+      }
+
+      .title {
+        margin: 0;
+        font-family: Georgia, "Times New Roman", serif;
+        font-size: 184px;
+        line-height: 0.92;
+        letter-spacing: 0;
+        color: #f8fafc;
+        text-shadow: 0 0 38px rgba(248, 211, 106, 0.16);
+      }
+
+      .tagline {
+        margin: 0;
+        font-size: 48px;
+        line-height: 1.25;
+        color: #f8d36a;
+      }
+
+      .body {
+        margin: 0;
+        max-width: 890px;
+        font-size: 36px;
+        line-height: 1.45;
+        color: #dbeafe;
+      }
+
+      .cards {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 28px;
+        width: 100%;
+      }
+
+      .card {
+        min-height: 240px;
+        padding: 36px;
+        border: 1px solid rgba(45, 212, 191, 0.42);
+        background: rgba(16, 29, 47, 0.78);
+        box-shadow: 0 20px 70px rgba(0, 0, 0, 0.26);
+        box-sizing: border-box;
+      }
+
+      .card h2 {
+        margin: 0 0 22px;
+        font-size: 44px;
+        color: #f8d36a;
+        font-family: Georgia, "Times New Roman", serif;
+        letter-spacing: 0;
+      }
+
+      .card p {
+        margin: 0;
+        font-size: 28px;
+        line-height: 1.42;
+        color: #cbd5e1;
+      }
+
+      .flow {
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 42px;
+      }
+
+      .flow-row {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 18px;
+      }
+
+      .step {
+        padding: 28px 20px;
+        text-align: center;
+        border: 1px solid rgba(233, 169, 54, 0.55);
+        background: rgba(8, 17, 31, 0.7);
+        color: #f8fafc;
+        font-size: 30px;
+      }
+
+      .final {
+        text-align: center;
+        max-width: 1320px;
+      }
+
+      .final .title {
+        font-size: 150px;
+        margin-bottom: 34px;
+      }
+
+      .final .body {
+        max-width: 1320px;
+      }
+
+      .hidden-start {
+        opacity: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div data-composition-id="myelin-launch" data-width="1920" data-height="1080">
+      <div class="frame"></div>
+      <div class="meander top"></div>
+      <div class="meander bottom"></div>
+
+      <section class="scene hero-scene">
+        <div class="hero">
+          <div class="sigil"></div>
+          <div class="copy">
+            <div class="eyebrow">&gt; procedural learning for AI agents</div>
+            <h1 class="title">Myelin</h1>
+            <p class="tagline">mem0 remembers. Myelin learns.</p>
+            <p class="body">
+              A local-first MCP layer that turns repeated agent workflows into reusable
+              procedures.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="scene problem-scene hidden-start">
+        <div class="cards">
+          <div class="card">
+            <h2>Observe</h2>
+            <p>Agents emit concise action traces instead of dumping whole conversations.</p>
+          </div>
+          <div class="card">
+            <h2>Align</h2>
+            <p>Repeated sessions are clustered and aligned into consensus workflows.</p>
+          </div>
+          <div class="card">
+            <h2>Promote</h2>
+            <p>Useful patterns become procedures with calibrated confidence.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="scene flow-scene hidden-start">
+        <div class="flow">
+          <p class="terminal">&gt; learning loop</p>
+          <div class="flow-row">
+            <div class="step">context</div>
+            <div class="step">observe batch</div>
+            <div class="step">sleep</div>
+            <div class="step">execute</div>
+            <div class="step">feedback</div>
+          </div>
+          <p class="body">
+            Hermes, Codex, Claude Code, OpenClaw, and any MCP-compatible agent can use the same
+            learned procedures.
+          </p>
+        </div>
+      </section>
+
+      <section class="scene final-scene hidden-start">
+        <div class="final">
+          <h2 class="title">Agents should not relearn the same workflow twice.</h2>
+          <p class="body">
+            Myelin is local-first, SQLite-backed, MCP-native, and no LLM is required for core
+            procedure learning.
+          </p>
+        </div>
+      </section>
+
+      <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+      <script>
+        window.__timelines = window.__timelines || {};
+        const tl = gsap.timeline({ paused: true });
+
+        tl.from(".frame", { opacity: 0, scale: 0.985, duration: 0.5, ease: "power2.out" }, 0);
+        tl.from(".meander", { opacity: 0, x: -40, duration: 0.6, ease: "power2.out" }, 0.1);
+        tl.from(".sigil", { opacity: 0, scale: 0.86, rotation: -12, duration: 0.8, ease: "power3.out" }, 0.2);
+        tl.from(".hero-scene .copy > *", { opacity: 0, y: 34, duration: 0.55, stagger: 0.12, ease: "power3.out" }, 0.45);
+        tl.to(".hero-scene", { opacity: 0, y: -32, duration: 0.45, ease: "power2.in" }, 4.0);
+
+        tl.to(".problem-scene", { opacity: 1, duration: 0.1 }, 4.35);
+        tl.from(".card", { opacity: 0, y: 52, duration: 0.55, stagger: 0.15, ease: "power3.out" }, 4.45);
+        tl.to(".problem-scene", { opacity: 0, y: -30, duration: 0.45, ease: "power2.in" }, 8.2);
+
+        tl.to(".flow-scene", { opacity: 1, duration: 0.1 }, 8.55);
+        tl.from(".flow .terminal", { opacity: 0, x: -36, duration: 0.45, ease: "power2.out" }, 8.65);
+        tl.from(".step", { opacity: 0, y: 38, duration: 0.45, stagger: 0.12, ease: "power3.out" }, 8.85);
+        tl.from(".flow .body", { opacity: 0, y: 28, duration: 0.5, ease: "power2.out" }, 9.7);
+        tl.to(".flow-scene", { opacity: 0, y: -28, duration: 0.45, ease: "power2.in" }, 13.0);
+
+        tl.to(".final-scene", { opacity: 1, duration: 0.1 }, 13.35);
+        tl.from(".final .title", { opacity: 0, y: 42, duration: 0.7, ease: "power3.out" }, 13.45);
+        tl.from(".final .body", { opacity: 0, y: 30, duration: 0.55, ease: "power2.out" }, 14.0);
+
+        window.__timelines["myelin-launch"] = tl;
+      </script>
+    </div>
+  </body>
+</html>
+
