@@ -1,4 +1,4 @@
-"""MCP tool handlers for all 16 Myelin tools."""
+"""MCP tool handlers for Myelin tools."""
 
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ from ..transfer.protocol import TransferProtocol
 
 
 class ToolHandlers:
-    """Implements all 16 MCP tool operations."""
+    """Implements Myelin MCP tool operations."""
 
     def __init__(
         self,
@@ -91,7 +91,106 @@ class ToolHandlers:
         tags: list[str] | None = None,
     ) -> dict[str, Any]:
         embedding = self.embedder.embed(content_text) or None
+        episode = self._build_episode(
+            agent_id=agent_id,
+            session_id=session_id,
+            action=action,
+            action_type=action_type,
+            content_text=content_text,
+            input_context=input_context,
+            output_result=output_result,
+            success=success,
+            domain=domain,
+            tags=tags,
+            embedding=embedding,
+        )
 
+        episode_id = self._record_episode(episode)
+
+        return {
+            "episode_id": episode_id,
+            "status": "recorded",
+            "total_episodes": self.episodic.count(agent_id),
+        }
+
+    # ── 2. myelin_observe_batch ───────────────────────────────
+
+    async def observe_batch(self, events: list[dict[str, Any]]) -> dict[str, Any]:
+        """Record many observations in one transaction."""
+        started = time.perf_counter()
+        failed: list[dict[str, Any]] = []
+        prepared: list[Episode] = []
+        texts: list[str] = []
+
+        required = {"agent_id", "session_id", "action", "action_type", "content_text"}
+        failed_indices: set[int] = set()
+        for index, event in enumerate(events):
+            missing = sorted(required - set(event))
+            if missing:
+                failed_indices.add(index)
+                failed.append(
+                    {
+                        "index": index,
+                        "error": f"Missing required fields: {', '.join(missing)}",
+                    }
+                )
+                continue
+            texts.append(str(event["content_text"]))
+
+        embeddings = self.embedder.embed_batch(texts) if texts else []
+        embedding_index = 0
+        for index, event in enumerate(events):
+            if index in failed_indices:
+                continue
+            embedding = embeddings[embedding_index] if embedding_index < len(embeddings) else []
+            embedding_index += 1
+            try:
+                prepared.append(
+                    self._build_episode(
+                        agent_id=str(event["agent_id"]),
+                        session_id=str(event["session_id"]),
+                        action=str(event["action"]),
+                        action_type=str(event["action_type"]),
+                        content_text=str(event["content_text"]),
+                        input_context=event.get("input_context"),
+                        output_result=event.get("output_result"),
+                        success=bool(event.get("success", True)),
+                        domain=event.get("domain"),
+                        tags=event.get("tags"),
+                        embedding=embedding or None,
+                    )
+                )
+            except (TypeError, ValueError) as exc:
+                failed_indices.add(index)
+                failed.append({"index": index, "error": str(exc)})
+
+        episode_ids: list[str] = []
+        if prepared:
+            with self.db.transaction():
+                for episode in prepared:
+                    episode_ids.append(self._record_episode(episode))
+
+        return {
+            "recorded": len(episode_ids),
+            "failed": failed,
+            "episode_ids": episode_ids,
+            "duration_ms": round((time.perf_counter() - started) * 1000, 3),
+        }
+
+    def _build_episode(
+        self,
+        agent_id: str,
+        session_id: str,
+        action: str,
+        action_type: str,
+        content_text: str,
+        input_context: dict | None = None,
+        output_result: dict | None = None,
+        success: bool = True,
+        domain: str | None = None,
+        tags: list[str] | None = None,
+        embedding: list[float] | None = None,
+    ) -> Episode:
         episode = Episode(
             agent_id=agent_id,
             session_id=session_id,
@@ -105,29 +204,27 @@ class ToolHandlers:
             domain=domain,
             tags=tags or [],
         )
+        return episode
 
+    def _record_episode(self, episode: Episode) -> str:
         episode_id = self.episodic.record(episode)
 
         self.entities.process_episode(
             episode_id=episode_id,
-            content_text=content_text,
-            action=action,
-            action_type=action_type,
-            domain=domain,
+            content_text=episode.content_text,
+            action=episode.action,
+            action_type=episode.action_type.value,
+            domain=episode.domain,
         )
 
-        if domain:
-            self.confidence_map.update_domain(domain, episode_delta=1)
+        if episode.domain:
+            self.confidence_map.update_domain(episode.domain, episode_delta=1)
 
-        self._check_learning_goals(domain, agent_id)
+        self._check_learning_goals(episode.domain, episode.agent_id)
 
-        return {
-            "episode_id": episode_id,
-            "status": "recorded",
-            "total_episodes": self.episodic.count(agent_id),
-        }
+        return episode_id
 
-    # ── 2. myelin_recall ──────────────────────────────────────
+    # ── 3. myelin_recall ──────────────────────────────────────
 
     async def recall(
         self,
@@ -621,15 +718,20 @@ class ToolHandlers:
     # ── 16. myelin_sleep ──────────────────────────────────────
 
     async def trigger_sleep(self, agent_id: str | None = None) -> dict[str, Any]:
-        """Trigger a sleep consolidation cycle manually."""
+        """Trigger sleep consolidation and procedure promotion manually."""
+        from ..cognitive.promoter import Promoter
         from ..cognitive.sleep import SleepCycle
 
         sleep = SleepCycle(self.db)
-        result = await sleep.run()
+        sleep_result = await sleep.run()
+        promoter = Promoter(self.db, self.episodic, self.procedural)
+        promoter_result = await promoter.run()
         return {
             "status": "completed",
             "process": "sleep",
-            **result,
+            **sleep_result,
+            "sleep": sleep_result,
+            "promoter": promoter_result,
         }
 
     # ── Internal helpers ───────────────────────────────────────

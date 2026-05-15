@@ -75,6 +75,31 @@ class TestObserveAndRecall:
         result = await handlers.confidence(domain="deployment")
         assert result["domain"]["confidence"] > 0
 
+    async def test_observe_batch_records_valid_events_and_reports_invalid(self, handlers):
+        result = await handlers.observe_batch(
+            [
+                {
+                    "agent_id": "agent1",
+                    "session_id": "batch-1",
+                    "action": "deploy service-7",
+                    "action_type": "tool_call",
+                    "content_text": "Deploy service-7 with kubectl rollout",
+                    "domain": "deployment",
+                },
+                {
+                    "agent_id": "agent1",
+                    "session_id": "batch-1",
+                    "action": "missing content",
+                    "action_type": "tool_call",
+                },
+            ]
+        )
+
+        assert result["recorded"] == 1
+        assert len(result["failed"]) == 1
+        recall = await handlers.recall("service-7", limit=5)
+        assert recall["total_results"] >= 1
+
 
 class TestContextAssembly:
     """Test the context assembly flow."""
@@ -187,6 +212,42 @@ class TestProcedureLifecycle:
         assert execution["confidence"] >= 0.65
         assert execution["trust_level"] in {"candidate", "validated", "trusted"}
         assert execution["recommendation"] == "suggest_only_review_before_execution"
+        assert len(execution["steps"]) >= 3
+
+    async def test_observe_batch_and_sleep_promote_procedure(self, handlers):
+        workflow = [
+            "git pull origin main",
+            "npm test",
+            "docker build myelin:latest",
+            "docker push registry/myelin:latest",
+            "kubectl rollout restart deployment/myelin",
+        ]
+        events = []
+        for run in range(5):
+            for action in workflow:
+                events.append(
+                    {
+                        "agent_id": "demo-agent",
+                        "session_id": f"batch-deploy-{run}",
+                        "action": action,
+                        "action_type": "tool_call",
+                        "content_text": f"{action} during batched production deployment",
+                        "domain": "deployment",
+                    }
+                )
+
+        batch = await handlers.observe_batch(events)
+        assert batch["recorded"] == len(events)
+        assert batch["failed"] == []
+
+        sleep = await handlers.trigger_sleep(agent_id="demo-agent")
+        assert sleep["promoter"]["created"] >= 1
+
+        execution = await handlers.execute_procedure(
+            query="deployment workflow",
+            agent_id="demo-agent",
+        )
+        assert execution["found"] is True
         assert len(execution["steps"]) >= 3
 
 

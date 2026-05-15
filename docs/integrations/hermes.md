@@ -73,6 +73,7 @@ tools:
   include:
     - myelin_context
     - myelin_observe
+    - myelin_observe_batch
     - myelin_execute_procedure
     - myelin_procedure_feedback
     - myelin_status
@@ -128,6 +129,8 @@ During the task:
   }
 }
 ```
+
+For bursts of events from a Hermes workflow, prefer `myelin_observe_batch` with the same event shape in an `events` array. It records valid events in one SQLite transaction and returns per-event failures without discarding the valid observations.
 
 After a task:
 
@@ -203,3 +206,9 @@ Trust after feedback: validated
 ```
 
 If this works, wire Hermes to the MCP server and let it observe low-risk workflows first: repo CI, recurring research summaries, build-log-to-brand, and deployment dry-runs.
+
+Run a local speed smoke test:
+
+```bash
+python -m myelin.benchmark --counts 1000 --json
+```

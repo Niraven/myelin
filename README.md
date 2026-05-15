@@ -32,6 +32,7 @@ Myelin can learn from single agents, delegated teams, and swarms as long as the 
 - Compare the category: [docs/COMPARISONS.md](docs/COMPARISONS.md)
 - Wire Hermes: [docs/integrations/hermes.md](docs/integrations/hermes.md)
 - Emit observations: [docs/OBSERVATION_SCHEMA.md](docs/OBSERVATION_SCHEMA.md)
+- Benchmark locally: [docs/PERFORMANCE.md](docs/PERFORMANCE.md)
 
 ## Why Myelin
 
@@ -80,7 +81,7 @@ This simulates Hermes coordinating research, build, and release agents across no
 ## Architecture
 
 ```
-                    MCP Interface (16 tools)
+                    MCP Interface (17 tools)
                            |
             +--------------+--------------+
             |              |              |
@@ -198,6 +199,7 @@ results = await session.end()
 | Tool | Purpose |
 |------|---------|
 | `myelin_observe` | Record an action with automatic entity extraction |
+| `myelin_observe_batch` | Record many actions in one transaction for orchestrators |
 | `myelin_context` | Assemble complete context for a situation (primary tool) |
 | `myelin_query` | Multi-signal retrieval across all memory types |
 | `myelin_execute_procedure` | Find matching learned procedure for a task |
@@ -210,7 +212,7 @@ results = await session.end()
 | `myelin_transfer_import` | Import procedure from another agent |
 | `myelin_transfer_discover` | Find transferable procedures between agents |
 | `myelin_confidence` | Query domain/procedure confidence |
-| `myelin_sleep` | Trigger sleep consolidation cycle |
+| `myelin_sleep` | Trigger sleep consolidation and procedure promotion |
 | `myelin_recall` | Basic search across memory types |
 | `myelin_status` | System status overview |
 
@@ -288,6 +290,18 @@ src/myelin/
 - Pydantic for data models
 - Optional: nomic-embed-text-v1.5 for local embeddings
 
+## Performance
+
+Myelin's public speed story is agent acceleration: agents spend less time rediscovering repeated workflows because they can reuse learned procedures.
+
+Run a local benchmark:
+
+```bash
+python -m myelin.benchmark --counts 1000 --json
+```
+
+See [docs/PERFORMANCE.md](docs/PERFORMANCE.md) for fast trace, semantic, and hybrid modes.
+
 ## Development
 
 ```bash
@@ -299,6 +313,7 @@ ruff check src/ tests/ examples/
 mypy src/myelin/ --ignore-missing-imports
 pytest tests/ -q
 python examples/procedure_learning_demo.py
+python examples/hermes_procedure_demo.py
 ```
 
 ## Community

@@ -1,4 +1,4 @@
-"""Myelin MCP server. Exposes 16 tools for agent memory and intelligence."""
+"""Myelin MCP server. Exposes tools for agent memory and intelligence."""
 
 from __future__ import annotations
 
@@ -56,6 +56,53 @@ TOOLS = [
                 "tags": {"type": "array", "items": {"type": "string"}},
             },
             "required": ["agent_id", "session_id", "action", "action_type", "content_text"],
+        },
+    ),
+    Tool(
+        name="myelin_observe_batch",
+        description="Record many agent actions in one transaction. Use this when orchestrators emit bursts of events from a workflow, team, or swarm.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "events": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "agent_id": {
+                                "type": "string",
+                                "description": "Unique identifier for the acting agent",
+                            },
+                            "session_id": {
+                                "type": "string",
+                                "description": "Shared workflow/session identifier",
+                            },
+                            "action": {"type": "string", "description": "What the agent did"},
+                            "action_type": {
+                                "type": "string",
+                                "enum": ["tool_call", "response", "error", "user_input"],
+                            },
+                            "content_text": {
+                                "type": "string",
+                                "description": "Full text description for search indexing",
+                            },
+                            "input_context": {"type": "object"},
+                            "output_result": {"type": "object"},
+                            "success": {"type": "boolean", "default": True},
+                            "domain": {"type": "string"},
+                            "tags": {"type": "array", "items": {"type": "string"}},
+                        },
+                        "required": [
+                            "agent_id",
+                            "session_id",
+                            "action",
+                            "action_type",
+                            "content_text",
+                        ],
+                    },
+                }
+            },
+            "required": ["events"],
         },
     ),
     Tool(
@@ -332,6 +379,7 @@ def create_server(db_path: str | None = None, embedding_provider: str = "none") 
     async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         handler_map: dict[str, Any] = {
             "myelin_observe": handlers.observe,
+            "myelin_observe_batch": handlers.observe_batch,
             "myelin_recall": handlers.recall,
             "myelin_context": handlers.context,
             "myelin_execute_procedure": handlers.execute_procedure,

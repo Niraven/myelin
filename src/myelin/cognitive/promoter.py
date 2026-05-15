@@ -37,6 +37,8 @@ from .base import CognitiveProcess
 PROMOTION_THRESHOLD = 1.0
 MIN_SESSIONS = 2
 MIN_STEPS = 2
+RECENT_FALLBACK_LIMIT = 1000
+RECENT_FALLBACK_SESSIONS = 100
 
 
 class Promoter(CognitiveProcess):
@@ -62,11 +64,17 @@ class Promoter(CognitiveProcess):
 
     async def execute(self) -> dict[str, Any]:
         """Full Phase 1 promotion pipeline."""
+        if not self._has_new_episodes_since_last_run():
+            return {"processed": 0, "created": 0, "reason": "no new episodes"}
+
         # 1. Get unconsolidated episodes first; after session-end consolidation,
         # fall back to recent history so procedure promotion still has evidence.
         all_episodes = self.episodic.get_unconsolidated(limit=500)
         if len(all_episodes) < MIN_SESSIONS:
-            all_episodes = list(reversed(self.episodic.get_recent(limit=500)))
+            all_episodes = self._limit_to_recent_sessions(
+                list(reversed(self.episodic.get_recent(limit=RECENT_FALLBACK_LIMIT))),
+                max_sessions=RECENT_FALLBACK_SESSIONS,
+            )
         if len(all_episodes) < MIN_SESSIONS:
             return {"processed": 0, "created": 0, "reason": "not enough episodes"}
 
@@ -131,6 +139,36 @@ class Promoter(CognitiveProcess):
                 self.episodic.mark_consolidated(episode_ids, cluster_id)
 
         return {"processed": processed, "created": created}
+
+    def _has_new_episodes_since_last_run(self) -> bool:
+        last_run = self.db.fetchone(
+            "SELECT completed_at FROM process_runs "
+            "WHERE process_name = ? AND status = 'completed' "
+            "ORDER BY completed_at DESC LIMIT 1",
+            (self.name.value,),
+        )
+        if not last_run or not last_run.get("completed_at"):
+            return True
+        row = self.db.fetchone(
+            "SELECT COUNT(*) as cnt FROM episodes WHERE datetime(created_at) > datetime(?)",
+            (last_run["completed_at"],),
+        )
+        return bool(row and row["cnt"] > 0)
+
+    def _limit_to_recent_sessions(
+        self,
+        episodes: list[dict[str, Any]],
+        max_sessions: int,
+    ) -> list[dict[str, Any]]:
+        seen: set[str] = set()
+        selected_reversed: list[dict[str, Any]] = []
+        for ep in reversed(episodes):
+            session_id = ep.get("session_id", "unknown")
+            if session_id not in seen and len(seen) >= max_sessions:
+                continue
+            seen.add(session_id)
+            selected_reversed.append(ep)
+        return list(reversed(selected_reversed))
 
     def _group_by_session(self, episodes: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
         sessions: dict[str, list[dict]] = defaultdict(list)

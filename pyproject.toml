@@ -47,6 +47,7 @@ dev = [
 
 [project.scripts]
 myelin = "myelin.server:main"
+myelin-benchmark = "myelin.benchmark:main"
 
 [project.urls]
 Homepage = "https://github.com/Niraven/myelin"

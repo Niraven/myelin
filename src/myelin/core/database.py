@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import struct
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +22,30 @@ def _deserialize_f32(blob: bytes, dim: int = 768) -> list[float]:
     return list(struct.unpack(f"{dim}f", blob))
 
 
+def escape_fts_query(query: str) -> str:
+    """Convert user text into a safe FTS5 MATCH expression.
+
+    FTS5 treats punctuation such as '-' as query syntax. Agent traces often
+    contain service IDs, paths, flags, and error codes, so quote each token
+    before passing it to MATCH.
+    """
+    tokens: list[str] = []
+    current: list[str] = []
+    for char in query:
+        if char.isalnum() or char in "._/@:+-":
+            current.append(char)
+        elif current:
+            tokens.append("".join(current))
+            current = []
+    if current:
+        tokens.append("".join(current))
+
+    if not tokens:
+        return '"__myelin_no_match__"'
+
+    return " ".join(f'"{token.replace(chr(34), chr(34) + chr(34))}"' for token in tokens)
+
+
 class Database:
     """Thread-local SQLite connection with FTS5 and optional sqlite-vec."""
 
@@ -30,6 +55,7 @@ class Database:
         self._conn: sqlite3.Connection | None = None
         self._enable_vec = enable_vec
         self._vec_available = False
+        self._transaction_depth = 0
 
     @property
     def conn(self) -> sqlite3.Connection:
@@ -76,6 +102,27 @@ class Database:
     def commit(self) -> None:
         self.conn.commit()
 
+    @contextmanager
+    def transaction(self):
+        """Group many operations into one SQLite transaction."""
+        self._transaction_depth += 1
+        try:
+            if self._transaction_depth == 1:
+                self.conn.execute("BEGIN")
+            yield self
+            if self._transaction_depth == 1:
+                self.conn.commit()
+        except Exception:
+            if self._transaction_depth == 1:
+                self.conn.rollback()
+            raise
+        finally:
+            self._transaction_depth -= 1
+
+    def _commit_if_needed(self) -> None:
+        if self._transaction_depth == 0:
+            self.conn.commit()
+
     def fetchone(self, sql: str, params: tuple | dict = ()) -> dict[str, Any] | None:
         row = self.conn.execute(sql, params).fetchone()
         return dict(row) if row else None
@@ -99,7 +146,7 @@ class Database:
         placeholders = ", ".join(f":{k}" for k in processed)
         sql = f"INSERT INTO {table} ({cols}) VALUES ({placeholders})"
         self.conn.execute(sql, processed)
-        self.conn.commit()
+        self._commit_if_needed()
 
     def update(self, table: str, id_value: str, data: dict[str, Any]) -> None:
         processed: dict[str, Any] = {}
@@ -117,11 +164,11 @@ class Database:
         processed["_id"] = id_value
         sql = f"UPDATE {table} SET {sets} WHERE id = :_id"
         self.conn.execute(sql, processed)
-        self.conn.commit()
+        self._commit_if_needed()
 
     def delete(self, table: str, id_value: str) -> None:
         self.conn.execute(f"DELETE FROM {table} WHERE id = ?", (id_value,))
-        self.conn.commit()
+        self._commit_if_needed()
 
     # ── FTS5 search ────────────────────────────────────────────
 
@@ -140,7 +187,8 @@ class Database:
             ORDER BY rank
             LIMIT ?
         """
-        return self.fetchall(sql, (query, limit))
+        safe_query = escape_fts_query(query)
+        return self.fetchall(sql, (safe_query, limit))
 
     # ── Vector search (requires sqlite-vec) ────────────────────
 

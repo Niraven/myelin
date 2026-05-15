@@ -41,6 +41,9 @@ jobs:
       - name: Hermes demo
         run: python examples/hermes_procedure_demo.py
 
+      - name: Benchmark smoke
+        run: python -m myelin.benchmark --counts 100 --json
+
   lint:
     runs-on: ubuntu-latest
     steps:

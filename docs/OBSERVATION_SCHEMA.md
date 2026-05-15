@@ -8,7 +8,7 @@ Myelin does not watch processes automatically and it does not replace the orches
 
 ## Required Fields
 
-These fields map directly to `myelin_observe`.
+These fields map directly to `myelin_observe`. For orchestrators emitting many events, wrap the same objects in `{"events": [...]}` and call `myelin_observe_batch`.
 
 | Field | Type | Purpose |
 |---|---:|---|

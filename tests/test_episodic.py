@@ -82,6 +82,23 @@ def test_fts_search(episodic):
     assert any("npm" in r.get("action", "") for r in results)
 
 
+def test_fts_search_escapes_agent_syntax(episodic):
+    ep = Episode(
+        agent_id="a",
+        session_id="s1",
+        action="deploy service-7",
+        action_type=ActionType.TOOL_CALL,
+        content_text="Deploy service-7 from src/app.py with --force after EACCES",
+        domain="deployment",
+    )
+    episodic.record(ep)
+
+    assert episodic.search_text("service-7")
+    assert episodic.search_text("src/app.py")
+    assert episodic.search_text("--force")
+    assert episodic.search_text("EACCES")
+
+
 def test_get_by_session(episodic):
     for i in range(3):
         ep = Episode(
