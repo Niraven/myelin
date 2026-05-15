@@ -18,7 +18,8 @@ from ..core.models import (
     StepType,
 )
 from ..intelligence.context import ContextAssembler
-from ..knowledge.entities import EntityStore
+from ..intelligence.synthesizer import Synthesizer
+from ..knowledge.entities import EntityStore, HybridEntityExtractor
 from ..knowledge.graph import KnowledgeGraph
 from ..knowledge.temporal import TemporalIndex
 from ..memory.embedding import EmbeddingProvider
@@ -48,12 +49,15 @@ class ToolHandlers:
         transfer_protocol: TransferProtocol | None = None,
         confidence_map: ConfidenceMap | None = None,
         agent_profiler: AgentProfiler | None = None,
+        synthesizer: Synthesizer | None = None,
+        hybrid_extractor: HybridEntityExtractor | None = None,
     ):
         self.episodic = episodic
         self.semantic = semantic
         self.procedural = procedural
         self.embedder = embedder
         self.db = episodic.db
+        self.synthesizer = synthesizer
 
         self.entities = entity_store or EntityStore(self.db)
         self.graph = graph or KnowledgeGraph(self.db)
@@ -74,6 +78,7 @@ class ToolHandlers:
             self.confidence_map,
             self.embedder,
         )
+        self.hybrid_extractor = hybrid_extractor
 
     # ── 1. myelin_observe ─────────────────────────────────────
 
@@ -491,6 +496,7 @@ class ToolHandlers:
         limit: int = 10,
         domain: str | None = None,
         weights: dict[str, float] | None = None,
+        synthesize: bool = False,
     ) -> dict[str, Any]:
         """Multi-signal retrieval across all memory types."""
         query_vec = self.embedder.embed(query) or None
@@ -501,18 +507,26 @@ class ToolHandlers:
             limit=limit,
             weights=weights,
         )
+        raw_results = [
+            {
+                "id": r.get("id"),
+                "source_type": r.get("_source_type"),
+                "content": r.get("content_text") or r.get("content") or r.get("name", ""),
+                "composite_score": r.get("_composite_score", 0),
+                "scores": r.get("_scores", {}),
+            }
+            for r in results
+        ]
+
+        if synthesize and self.synthesizer:
+            return self.synthesizer.synthesize(
+                query=query,
+                results=raw_results,
+            )
+
         return {
             "query": query,
-            "results": [
-                {
-                    "id": r.get("id"),
-                    "source_type": r.get("_source_type"),
-                    "content": r.get("content_text") or r.get("content") or r.get("name", ""),
-                    "composite_score": r.get("_composite_score", 0),
-                    "scores": r.get("_scores", {}),
-                }
-                for r in results
-            ],
+            "results": raw_results,
             "total": len(results),
         }
 
@@ -619,8 +633,8 @@ class ToolHandlers:
             "history": [
                 {
                     "state": h["state_description"],
-                    "from": h.get("valid_from"),
-                    "until": h.get("valid_until"),
+                    "from": h["valid_from"],
+                    "until": h["valid_until"],
                 }
                 for h in history[:10]
             ],
@@ -634,7 +648,141 @@ class ToolHandlers:
             ],
         }
 
-    # ── 12. myelin_entities ───────────────────────────────────
+    # ── 12. myelin_what_changed ───────────────────────────────
+
+    async def what_changed(
+        self,
+        domain: str,
+        since: str,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """Return state changes in a domain since a timestamp."""
+        transitions = self.temporal.get_domain_transitions_since(domain, since, limit=limit)
+
+        if not transitions:
+            return {
+                "found": True,
+                "domain": domain,
+                "since": since,
+                "change_count": 0,
+                "changes": [],
+                "markdown": f"## No changes\nNo temporal changes found for `{domain}` since `{since}`.",
+            }
+
+        rows = []
+        for t in transitions:
+            rows.append(
+                {
+                    "entity": t.get("entity_name") or t.get("entity_id") or "unknown",
+                    "from": t.get("from_state") or "(initial state)",
+                    "to": t.get("to_state"),
+                    "changed_at": t.get("changed_at"),
+                    "confidence": t.get("confidence", 0.5),
+                }
+            )
+
+        markdown_rows = [
+            "## Temporal Changes",
+            f"Domain: `{domain}` · Since: `{since}`",
+            "",
+            "| Entity | From | To | Changed At | Confidence |",
+            "| --- | --- | --- | --- | --- |",
+        ]
+        for row in rows:
+            from_state = str(row["from"]).replace("|", "\\|")
+            to_state = str(row["to"]).replace("|", "\\|")
+            entity = str(row["entity"]).replace("|", "\\|")
+            markdown_rows.append(
+                f"| {entity} | {from_state} | {to_state} | {row['changed_at']} | "
+                f"{float(row['confidence']):.2f} |"
+            )
+
+        return {
+            "found": True,
+            "domain": domain,
+            "since": since,
+            "change_count": len(rows),
+            "changes": rows,
+            "markdown": "\n".join(markdown_rows),
+        }
+
+    async def entity_status(self, entity_name: str) -> dict[str, Any]:
+        """Get current state and recent transitions for an entity."""
+        found = self.entities.search(entity_name)
+        if not found:
+            return {
+                "found": False,
+                "entity_name": entity_name,
+                "error": f"Entity '{entity_name}' not found",
+                "markdown": f"## Entity Not Found\nNo entity matching `{entity_name}` exists in the knowledge graph.",
+            }
+
+        entity = found[0]
+        eid = entity["id"]
+        current = self.temporal.get_current_state(eid)
+        history = self.temporal.get_state_history(eid, limit=5)
+        transitions = self.temporal.get_state_transitions(eid)[:5]
+
+        current_entry = None
+        if current:
+            current_entry = {
+                "description": current["state_description"],
+                "since": current.get("valid_from"),
+                "confidence": current.get("confidence", 0.5),
+            }
+
+        markdown = [
+            f"## Entity Status: `{entity['canonical_name']}`",
+            f"Type: `{entity.get('entity_type', 'unknown')}`  |  Mentions: `{entity.get('mention_count', 0)}`",
+            "",
+            "### Current",
+            (
+                f"- **State:** {current_entry['description']} (since {current_entry['since']}, "
+                f"confidence {current_entry['confidence']:.2f})"
+                if current_entry
+                else "- **State:** unknown (no active state recorded)"
+            ),
+            "",
+            "### Recent Transitions",
+            "| From | To | When |",
+            "| --- | --- | --- |",
+        ]
+
+        for t in transitions:
+            from_state = str(t.get("from_state")).replace("|", "\\|")
+            to_state = str(t.get("to_state")).replace("|", "\\|")
+            markdown.append(f"| {from_state} | {to_state} | {t.get('changed_at')} |")
+
+        return {
+            "found": True,
+            "entity": {
+                "id": entity["id"],
+                "name": entity["canonical_name"],
+                "type": entity.get("entity_type", "unknown"),
+                "mention_count": entity.get("mention_count", 0),
+            },
+            "current_state": current_entry,
+            "recent_history": [
+                {
+                    "state": h["state_description"],
+                    "from": h.get("valid_from"),
+                    "until": h.get("valid_until"),
+                }
+                for h in history
+            ],
+            "transitions": [
+                {
+                    "from_state": t["from_state"],
+                    "to_state": t["to_state"],
+                    "when": t.get("changed_at"),
+                    "confidence": t.get("confidence", 0.5),
+                }
+                for t in transitions
+            ],
+            "markdown": "\n".join(markdown),
+        }
+
+    # ── 13. myelin_entities_query ───────────────────────────────
 
     async def entities_query(
         self,
@@ -722,7 +870,7 @@ class ToolHandlers:
         from ..cognitive.promoter import Promoter
         from ..cognitive.sleep import SleepCycle
 
-        sleep = SleepCycle(self.db)
+        sleep = SleepCycle(self.db, hybrid_extractor=self.hybrid_extractor)
         sleep_result = await sleep.run()
         promoter = Promoter(self.db, self.episodic, self.procedural)
         promoter_result = await promoter.run()

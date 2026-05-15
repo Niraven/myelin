@@ -120,6 +120,72 @@ class TemporalIndex:
             )
         return transitions
 
+    def get_domain_transitions_since(
+        self,
+        domain: str,
+        since: str,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        """Get state transitions in a domain since a timestamp.
+
+        Uses window transitions on the full entity timeline so the returned
+        transitions include the immediately prior state even if it started before
+        `since`.
+        """
+        rows = self.db.fetchall(
+            """
+            WITH domain_states AS (
+                SELECT
+                    ts.*, e.canonical_name AS entity_name,
+                    LAG(ts.state_description) OVER (
+                        PARTITION BY ts.entity_id
+                        ORDER BY ts.valid_from
+                    ) AS from_state,
+                    LAG(ts.valid_from) OVER (
+                        PARTITION BY ts.entity_id
+                        ORDER BY ts.valid_from
+                    ) AS from_since
+                FROM temporal_states ts
+                LEFT JOIN entities e ON e.id = ts.entity_id
+                WHERE ts.domain = ?
+            )
+            SELECT
+                id,
+                entity_id,
+                entity_name,
+                state_description,
+                from_state,
+                valid_from,
+                valid_until,
+                confidence,
+                source_episode_id,
+                created_at,
+                from_since
+            FROM domain_states
+            WHERE valid_from >= ?
+            ORDER BY valid_from DESC
+            LIMIT ?
+            """,
+            (domain, since, limit),
+        )
+
+        transitions = []
+        for row in rows:
+            if row.get("from_state") is None:
+                continue
+
+            transitions.append(
+                {
+                    "entity_id": row.get("entity_id"),
+                    "entity_name": row.get("entity_name"),
+                    "from_state": row.get("from_state"),
+                    "to_state": row.get("state_description"),
+                    "changed_at": row.get("valid_from"),
+                    "confidence": row.get("confidence", 0.5),
+                }
+            )
+        return transitions
+
     def get_current_states_for_domain(
         self,
         domain: str,

@@ -315,6 +315,42 @@ class TestTemporalQuery:
         assert "domain" in result
         assert "current_states" in result
 
+    async def test_what_changed(self, handlers):
+        e1 = handlers.entities.upsert_entity("cloudflared", "service", "cloudflared")
+        handlers.temporal.record_state("booting", entity_id=e1, domain="infrastructure", confidence=0.55)
+        handlers.temporal.record_state("running", entity_id=e1, domain="infrastructure", confidence=0.95)
+
+        result = await handlers.what_changed(
+            domain="infrastructure",
+            since="1990-01-01T00:00:00",
+        )
+
+        assert result["change_count"] == 1
+        assert result["changes"][0]["entity"] == "cloudflared"
+        assert result["changes"][0]["from"] == "booting"
+        assert result["changes"][0]["to"] == "running"
+        assert "markdown" in result
+
+    async def test_entity_status(self, handlers):
+        e1 = handlers.entities.upsert_entity("redis", "service", "redis")
+        handlers.temporal.record_state("starting", entity_id=e1, domain="deployment")
+        handlers.temporal.record_state("degraded", entity_id=e1, domain="deployment")
+
+        result = await handlers.entity_status(entity_name="redis")
+
+        assert result["found"] is True
+        assert result["entity"]["name"] == "redis"
+        assert result["current_state"]["description"] == "degraded"
+        assert len(result["recent_history"]) == 2
+        assert len(result["transitions"]) == 1
+        assert "markdown" in result
+
+    async def test_entity_status_not_found(self, handlers):
+        result = await handlers.entity_status(entity_name="does-not-exist")
+        assert result["found"] is False
+        assert "error" in result
+        assert "markdown" in result
+
 
 class TestTransferFlow:
     """Test the full transfer lifecycle."""

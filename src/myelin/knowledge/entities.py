@@ -16,7 +16,7 @@ from __future__ import annotations
 import re
 import time
 from collections import Counter, defaultdict
-from typing import Any
+from typing import Any, Callable
 from uuid import uuid4
 
 from ..core.database import Database
@@ -386,3 +386,42 @@ class EntityStore:
             entity_ids.append(entity_id)
 
         return entity_ids
+
+
+class PatternExtractor:
+    """Fast regex-based entity extraction. <1ms per text."""
+
+    def extract(
+        self,
+        text: str,
+        action: str = "",
+        action_type: str = "",
+    ) -> list[dict[str, str]]:
+        return extract_entities_from_text(text, action, action_type)
+
+
+class HybridEntityExtractor:
+    """Two-tier entity extraction: regex (fast) + LLM (deep)."""
+
+    def __init__(self, llm_extract: Callable | None = None):
+        self.regex = PatternExtractor()
+        self.llm = llm_extract
+
+    def extract_fast(
+        self,
+        text: str,
+        action: str = "",
+        action_type: str = "",
+    ) -> list[dict[str, str]]:
+        """Regex-only extraction. Called at write time. <1ms."""
+        return self.regex.extract(text, action, action_type)
+
+    def extract_concepts(self, texts: list[str]) -> list[dict[str, str]]:
+        """LLM-based concept extraction. Called during sleep.
+
+        Takes batch of episode texts, returns new entity candidates.
+        Each candidate has: name, entity_type, canonical_name.
+        """
+        if not self.llm:
+            return []
+        return self.llm(texts)

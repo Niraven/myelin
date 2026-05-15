@@ -43,6 +43,9 @@ CREATE TABLE IF NOT EXISTS episodes (
     consolidated INTEGER NOT NULL DEFAULT 0,
     cluster_id TEXT,
 
+    -- Importance scoring (0.0-1.0, computed during sleep)
+    importance_score REAL NOT NULL DEFAULT 0.5,
+
     -- Metadata
     tags TEXT DEFAULT '[]',            -- JSON array
     domain TEXT,                       -- Inferred domain (e.g. 'deployment', 'testing')

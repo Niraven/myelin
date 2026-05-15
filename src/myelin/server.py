@@ -13,6 +13,7 @@ from mcp.types import TextContent, Tool
 
 from .core.database import Database
 from .intelligence.context import ContextAssembler
+from .intelligence.synthesizer import Synthesizer
 from .knowledge.entities import EntityStore
 from .knowledge.graph import KnowledgeGraph
 from .knowledge.temporal import TemporalIndex
@@ -24,6 +25,37 @@ from .memory.semantic import SemanticMemory
 from .metacognition.confidence import ConfidenceMap
 from .tools.handlers import ToolHandlers
 from .transfer.protocol import TransferProtocol
+
+
+def _call_llm(endpoint: str, prompt: str) -> str:
+    """Minimal LLM call using stdlib urllib."""
+    import urllib.request
+    import urllib.error
+
+    data = json.dumps(
+        {"model": "default", "messages": [{"role": "user", "content": prompt}]}
+    ).encode("utf-8")
+    req = urllib.request.Request(
+        endpoint,
+        data=data,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+            # Attempt common response shapes (OpenAI-compatible / Ollama)
+            if "choices" in payload:
+                return str(payload["choices"][0]["message"]["content"])
+            if "message" in payload:
+                return str(payload["message"]["content"])
+            if "response" in payload:
+                return str(payload["response"])
+            return str(payload)
+    except urllib.error.URLError as exc:
+        return f"[LLM error: {exc}]"
+    except Exception as exc:
+        return f"[LLM error: {exc}]"
 
 TOOLS = [
     Tool(
@@ -230,6 +262,11 @@ TOOLS = [
                     "type": "object",
                     "description": "Signal weights: text, vector, entity, temporal, activation (0-1 each)",
                 },
+                "synthesize": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "When true, synthesize top results into a concise answer with citations",
+                },
             },
             "required": ["query"],
         },
@@ -258,6 +295,32 @@ TOOLS = [
                 "entity_id": {"type": "string"},
                 "domain": {"type": "string"},
             },
+        },
+    ),
+    Tool(
+        name="myelin_what_changed",
+        description="Get state transitions in a domain since a timestamp. Useful for answering what changed and when.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "domain": {"type": "string", "description": "Domain to query (e.g. infrastructure, deployment)."},
+                "since": {
+                    "type": "string",
+                    "description": "ISO timestamp or date from which to show changes (e.g. 2026-05-14 or 2026-05-14T09:00:00)",
+                },
+            },
+            "required": ["domain", "since"],
+        },
+    ),
+    Tool(
+        name="myelin_entity_status",
+        description="Get current state and recent transitions for a named entity.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "entity_name": {"type": "string", "description": "Canonical or alias entity name."},
+            },
+            "required": ["entity_name"],
         },
     ),
     Tool(
@@ -337,7 +400,12 @@ TOOLS = [
 ]
 
 
-def create_server(db_path: str | None = None, embedding_provider: str = "none") -> Server:
+def create_server(
+    db_path: str | None = None,
+    embedding_provider: str = "none",
+    llm_extraction: str | None = None,
+    synthesis_model: str | None = None,
+) -> Server:
     server = Server("myelin")
     db = Database(db_path)
     embedder = get_embedding_provider(embedding_provider)
@@ -350,6 +418,24 @@ def create_server(db_path: str | None = None, embedding_provider: str = "none") 
     graph = KnowledgeGraph(db)
     temporal = TemporalIndex(db)
     confidence_map = ConfidenceMap(db)
+
+    from .knowledge.concept_extractor import ConceptExtractor
+    from .knowledge.entities import HybridEntityExtractor
+
+    if llm_extraction:
+        extractor = ConceptExtractor(provider=llm_extraction)
+    else:
+        extractor = None
+
+    hybrid_extractor = HybridEntityExtractor(
+        llm_extract=extractor.extract_concepts if extractor else None
+    )
+
+    if synthesis_model:
+        llm = lambda prompt: _call_llm(synthesis_model, prompt)
+        synthesizer = Synthesizer(llm_complete=llm)
+    else:
+        synthesizer = Synthesizer()
 
     retriever = MultiSignalRetriever(db, entity_store, graph, temporal)
     assembler = ContextAssembler(
@@ -369,6 +455,8 @@ def create_server(db_path: str | None = None, embedding_provider: str = "none") 
         context_assembler=assembler,
         transfer_protocol=transfer,
         confidence_map=confidence_map,
+        synthesizer=synthesizer,
+        hybrid_extractor=hybrid_extractor,
     )
 
     @server.list_tools()
@@ -390,6 +478,8 @@ def create_server(db_path: str | None = None, embedding_provider: str = "none") 
             "myelin_query": handlers.query,
             "myelin_graph_query": handlers.graph_query,
             "myelin_temporal": handlers.temporal_query,
+            "myelin_what_changed": handlers.what_changed,
+            "myelin_entity_status": handlers.entity_status,
             "myelin_entities": handlers.entities_query,
             "myelin_transfer_export": handlers.transfer_export,
             "myelin_transfer_import": handlers.transfer_import,
@@ -407,8 +497,13 @@ def create_server(db_path: str | None = None, embedding_provider: str = "none") 
     return server
 
 
-async def run_server(db_path: str | None = None, embedding_provider: str = "none"):
-    server = create_server(db_path, embedding_provider)
+async def run_server(
+    db_path: str | None = None,
+    embedding_provider: str = "none",
+    llm_extraction: str | None = None,
+    synthesis_model: str | None = None,
+):
+    server = create_server(db_path, embedding_provider, llm_extraction, synthesis_model)
     async with stdio_server() as (read_stream, write_stream):
         await server.run(read_stream, write_stream, server.create_initialization_options())
 
@@ -423,8 +518,20 @@ def main():
         default="none",
         help="Embedding provider (none=text search only, local=nomic-embed)",
     )
+    parser.add_argument(
+        "--llm-extraction",
+        type=str,
+        default=None,
+        help="LLM endpoint/config for concept extraction (e.g. http://localhost:11434/v1/chat/completions)",
+    )
+    parser.add_argument(
+        "--synthesis-model",
+        type=str,
+        default=None,
+        help="LLM endpoint for query-time synthesis (e.g. http://localhost:11434/v1/chat/completions)",
+    )
     args = parser.parse_args()
-    asyncio.run(run_server(args.db, args.embeddings))
+    asyncio.run(run_server(args.db, args.embeddings, args.llm_extraction, args.synthesis_model))
 
 
 if __name__ == "__main__":

@@ -14,7 +14,8 @@ Our sleep cycle runs:
 4. Temporal state updates: close stale states, detect transitions
 5. Cross-domain linking: find entities that bridge domains
 6. Staleness detection: flag entities/facts not seen in recent sessions
-7. Stats: report what changed
+7. Importance scoring: compute per-episode importance from cluster stats
+8. Stats: report what changed
 
 Trigger: session end (alongside other cognitive processes) or manual.
 """
@@ -27,12 +28,49 @@ from ..core.database import Database
 from ..core.models import ProcessName
 from ..knowledge.entities import (
     EntityStore,
+    HybridEntityExtractor,
     extract_entities_from_text,
     extract_relations_from_sequence,
 )
 from ..knowledge.graph import KnowledgeGraph
 from ..knowledge.temporal import TemporalIndex
 from .base import CognitiveProcess
+from .importance import ImportanceWeights, score_clusters
+
+
+class ImportanceComputer:
+    """Batch-compute per-episode importance scores from cluster stats."""
+
+    def compute(
+        self,
+        db: Database,
+        episodes: list[dict[str, Any]],
+        weights: dict[str, float] | ImportanceWeights | None = None,
+    ) -> dict[str, float]:
+        """Compute importance for each episode based on its cluster stats.
+
+        Returns a mapping of episode_id -> importance_score.
+        """
+        if not episodes:
+            return {}
+
+        cluster_scores = score_clusters(episodes, weights=weights, use_normalized_default=True)
+        episode_scores: dict[str, float] = {}
+        for ep in episodes:
+            cid = ep.get("cluster_id") or ep.get("cluster")
+            if cid and cid in cluster_scores:
+                episode_scores[ep["id"]] = float(cluster_scores[cid])
+            else:
+                episode_scores[ep["id"]] = 0.5
+        return episode_scores
+
+    def persist(self, db: Database, episode_scores: dict[str, float]) -> int:
+        """Write computed scores back to the episodes table."""
+        updated = 0
+        for episode_id, score in episode_scores.items():
+            db.update("episodes", episode_id, {"importance_score": score})
+            updated += 1
+        return updated
 
 
 class SleepCycle(CognitiveProcess):
@@ -46,11 +84,13 @@ class SleepCycle(CognitiveProcess):
         entity_store: EntityStore | None = None,
         graph: KnowledgeGraph | None = None,
         temporal: TemporalIndex | None = None,
+        hybrid_extractor: HybridEntityExtractor | None = None,
     ):
         super().__init__(db)
         self.entities = entity_store or EntityStore(db)
         self.graph = graph or KnowledgeGraph(db)
         self.temporal = temporal or TemporalIndex(db)
+        self.hybrid_extractor = hybrid_extractor
 
     def should_run(self) -> bool:
         return True
@@ -63,13 +103,40 @@ class SleepCycle(CognitiveProcess):
             "temporal_states_updated": 0,
             "cross_domain_links": 0,
             "stale_flagged": 0,
+            "importance_scores_updated": 0,
         }
 
         # 1. Entity extraction already happens at write time in _record_episode()
         #    (handlers.py calls entities.process_episode for every observe()).
-        #    Skip redundant extraction — nothing will be "unprocessed" by sleep time.
         #    Future: add LLM-based concept extraction here for entities the regex
         #    patterns miss (e.g. "Kanban", "Obsidian", "DAG").
+
+        # LLM-based concept extraction during sleep (gated by --llm-extraction)
+        if self.hybrid_extractor:
+            unprocessed = self._get_unprocessed_episodes()
+            if unprocessed:
+                candidates = self.hybrid_extractor.extract_concepts(
+                    [ep["content_text"] for ep in unprocessed]
+                )
+                for candidate in candidates:
+                    entity_id = self.entities.upsert_entity(
+                        name=candidate["name"],
+                        entity_type=candidate.get("entity_type", "concept"),
+                        canonical_name=candidate.get(
+                            "canonical_name", candidate["name"].lower().strip()
+                        ),
+                    )
+                    # Link mentions back to episodes that contain the candidate
+                    candidate_lower = candidate["name"].lower()
+                    for ep in unprocessed:
+                        if candidate_lower in ep.get("content_text", "").lower():
+                            self.entities.add_mention(
+                                entity_id=entity_id,
+                                source_type="episode",
+                                source_id=ep["id"],
+                                context_snippet=ep["content_text"][:200],
+                            )
+                    results["entities_extracted"] += 1
 
         # 2. Relationship inference from session sequences
         recent_episodes = self.db.fetchall(
@@ -104,6 +171,17 @@ class SleepCycle(CognitiveProcess):
 
         # 6. Staleness detection
         results["stale_flagged"] += self._flag_stale_entities()
+
+        # 7. Importance scoring
+        importance_computer = ImportanceComputer()
+        episode_scores = importance_computer.compute(
+            self.db,
+            recent_episodes,
+            weights=ImportanceWeights(frequency=0.4, consequence=0.4, recency=0.2),
+        )
+        results["importance_scores_updated"] = importance_computer.persist(
+            self.db, episode_scores
+        )
 
         return results
 

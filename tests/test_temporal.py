@@ -1,5 +1,7 @@
 """Test temporal reasoning index."""
 
+from datetime import datetime, timedelta
+
 import pytest
 
 from myelin.core.database import Database
@@ -89,3 +91,21 @@ class TestTemporalIndex:
         temporal.record_state("Degraded", entity_id=e2, domain="prod")
         states = temporal.get_current_states_for_domain("prod")
         assert len(states) == 2
+
+    def test_get_domain_transitions_since(self, temporal, store, db):
+        eid = store.upsert_entity("cloudflared", "service", "cloudflared")
+        first = temporal.record_state("Booting", entity_id=eid, domain="infrastructure")
+        second = temporal.record_state("Running", entity_id=eid, domain="infrastructure")
+
+        older = (datetime.utcnow() - timedelta(days=3)).strftime("%Y-%m-%dT%H:%M:%S")
+        latest = (datetime.utcnow() - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%S")
+        db.execute("UPDATE temporal_states SET valid_from = ? WHERE id = ?", (older, first))
+        db.execute("UPDATE temporal_states SET valid_from = ? WHERE id = ?", (latest, second))
+        db.commit()
+
+        since = (datetime.utcnow() - timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%S")
+        transitions = temporal.get_domain_transitions_since("infrastructure", since)
+        assert len(transitions) == 1
+        assert transitions[0]["entity_name"] == "cloudflared"
+        assert transitions[0]["from_state"] == "Booting"
+        assert transitions[0]["to_state"] == "Running"

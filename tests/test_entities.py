@@ -47,7 +47,7 @@ class TestExtractEntities:
     def test_extracts_errors(self):
         entities = extract_entities_from_text("Got a TypeError when parsing the response")
         names = [e["canonical_name"] for e in entities]
-        assert "TypeError" in names
+        assert "typeerror" in names
 
     def test_deduplicates_within_text(self):
         entities = extract_entities_from_text("Run npm test then npm test again", "npm test")

@@ -59,8 +59,9 @@ class MultiSignalRetriever:
             "text": 0.25,
             "vector": 0.25,
             "entity": 0.20,
-            "temporal": 0.15,
-            "activation": 0.15,
+            "temporal": 0.10,
+            "activation": 0.10,
+            "importance": 0.10,
         }
 
         candidates: dict[str, dict[str, Any]] = {}
@@ -92,6 +93,7 @@ class MultiSignalRetriever:
             entity_score = self._compute_entity_score(candidate, entity_boost_ids)
             temporal_score = self._compute_temporal_score(candidate)
             activation_score = self._compute_activation_score(candidate)
+            importance_score = self._compute_importance_score(candidate)
 
             composite = (
                 w["text"] * text_score
@@ -99,6 +101,7 @@ class MultiSignalRetriever:
                 + w["entity"] * entity_score
                 + w["temporal"] * temporal_score
                 + w["activation"] * activation_score
+                + w.get("importance", 0.0) * importance_score
             )
 
             result = {k: v for k, v in candidate.items() if not k.startswith("_") or k in ("_source_type",)}
@@ -109,6 +112,7 @@ class MultiSignalRetriever:
                 "entity": entity_score,
                 "temporal": temporal_score,
                 "activation": activation_score,
+                "importance": importance_score,
             }
             scored.append((composite, result))
 
@@ -231,3 +235,13 @@ class MultiSignalRetriever:
 
         activation = base_level_activation(access_times)
         return min(1.0, max(0.0, (activation + 2.0) / 4.0))
+
+    def _compute_importance_score(self, candidate: dict[str, Any]) -> float:
+        """Score based on pre-computed importance (0.0-1.0)."""
+        importance = candidate.get("importance_score")
+        if importance is None:
+            return 0.5
+        try:
+            return float(min(1.0, max(0.0, importance)))
+        except (ValueError, TypeError):
+            return 0.5

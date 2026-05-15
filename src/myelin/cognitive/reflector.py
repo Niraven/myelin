@@ -10,13 +10,20 @@ Observations -> Reflections -> Higher-order Reflections
 
 from __future__ import annotations
 
-from typing import Any
+from collections import defaultdict
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Any, DefaultDict, Dict, Iterable, Mapping, MutableMapping
 
 from ..core.database import Database
 from ..core.models import NodeType, ProcessName, SemanticNode, SourceType
 from ..memory.semantic import SemanticMemory
 from .base import CognitiveProcess
 
+
+# ============================================================================
+# Reflector cognitive process
+# ============================================================================
 
 class Reflector(CognitiveProcess):
     name = ProcessName.REFLECTOR
@@ -78,3 +85,147 @@ class Reflector(CognitiveProcess):
             f"Pattern observed across: {'; '.join(c[:80] for c in contents[:3])}. "
             f"This suggests a consistent behavior in the {domain} domain."
         )
+
+
+# ============================================================================
+# Episode reflector utilities for importance scoring
+#
+# Provides deterministic cluster-level metrics extracted from a collection of
+# episode records used by ``importance.py``.
+# ============================================================================
+
+Episode = Mapping[str, Any]
+
+
+@dataclass(frozen=True)
+class ClusterStats:
+    """Pre-aggregated metrics for one cluster."""
+
+    cluster_id: str
+    frequency: int
+    success_rate: float
+    last_seen_ts: float
+
+
+def _as_iso_timestamp(value: Any) -> float | None:
+    """Return a unix timestamp from a datetime, int/float, or ISO-8601 string."""
+
+    if value is None:
+        return None
+
+    if isinstance(value, (int, float)):
+        return float(value)
+
+    if isinstance(value, datetime):
+        dt = value
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.timestamp()
+
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        # Support a common RFC3339 / ISO flavor used in payloads.
+        if text.endswith("Z"):
+            text = text[:-1] + "+00:00"
+        try:
+            return datetime.fromisoformat(text).timestamp()
+        except ValueError:
+            return None
+
+    return None
+
+
+def _cluster_id(episode: Episode) -> str | None:
+    """Resolve cluster field from multiple common key aliases."""
+
+    return (
+        episode.get("cluster")
+        or episode.get("cluster_id")
+        or episode.get("topic")
+        or episode.get("clusterId")
+    )
+
+
+def _to_success(value: Any) -> float:
+    """Parse success-like values into a 0.0..1.0 score."""
+
+    if isinstance(value, bool):
+        return 1.0 if value else 0.0
+
+    if isinstance(value, (int, float)):
+        if 0 <= float(value) <= 1:
+            return float(value)
+        if value > 1:
+            # Backward-compatible fallback for count-style signals.
+            return 1.0 if value > 0 else 0.0
+        return 0.0
+
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text in {"true", "t", "1", "yes", "y", "success", "succeeded", "pass", "passed"}:
+            return 1.0
+        if text in {"false", "f", "0", "no", "n", "failure", "failed", "fail"}:
+            return 0.0
+
+    return 0.0
+
+
+def build_cluster_stats(episodes: Iterable[Episode]) -> Dict[str, ClusterStats]:
+    """Aggregate episodes into per-cluster frequency/success/recency stats.
+
+    Parameters
+    ----------
+    episodes:
+        Iterable of episode dictionaries.
+
+    Required keys per episode
+    ------------------------
+    * ``cluster`` / ``cluster_id`` / ``topic`` / ``clusterId``
+
+    Optional keys
+    -------------
+    * ``success`` / ``success_rate`` / ``succeeded`` / ``outcome``
+    * ``timestamp`` / ``ts`` / ``seen_at`` / ``created_at``
+    """
+
+    raw: DefaultDict[str, list[float]] = defaultdict(list)
+    success_counts: MutableMapping[str, float] = defaultdict(float)
+    seen: MutableMapping[str, float] = {}
+
+    for episode in episodes:
+        cid = _cluster_id(episode)
+        if not cid:
+            continue
+
+        raw[cid].append(1.0)
+
+        success = episode.get("success")
+        if success is None:
+            # Keep compatibility with alternate source fields.
+            success = episode.get("success_rate", episode.get("succeeded", episode.get("outcome")))
+        success_counts[cid] += _to_success(success)
+
+        for key in ("timestamp", "ts", "seen_at", "created_at", "observed_at"):
+            ts = _as_iso_timestamp(episode.get(key))
+            if ts is not None:
+                seen[cid] = max(seen.get(cid, ts), ts)
+                break
+
+    cluster_stats: Dict[str, ClusterStats] = {}
+    for cluster_id, occurrences in raw.items():
+        frequency = len(occurrences)
+        success_rate = success_counts[cluster_id] / frequency if frequency else 0.0
+        cluster_last_seen = seen.get(cluster_id)
+        if cluster_last_seen is None:
+            # Deterministic fallback keeps scoring stable across missing timestamps.
+            cluster_last_seen = 0.0
+        cluster_stats[cluster_id] = ClusterStats(
+            cluster_id=cluster_id,
+            frequency=frequency,
+            success_rate=success_rate,
+            last_seen_ts=cluster_last_seen,
+        )
+
+    return cluster_stats
