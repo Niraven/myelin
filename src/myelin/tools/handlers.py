@@ -28,8 +28,10 @@ from ..memory.procedural import ProceduralMemory
 from ..memory.retriever import MultiSignalRetriever
 from ..memory.semantic import SemanticMemory
 from ..metacognition.confidence import ConfidenceMap
+from ..metacognition.profile import UserProfiler
 from ..transfer.profiling import AgentProfiler
 from ..transfer.protocol import TransferProtocol
+from .visualize import Visualizer
 
 
 class ToolHandlers:
@@ -67,6 +69,7 @@ class ToolHandlers:
         )
         self.confidence_map = confidence_map or ConfidenceMap(self.db)
         self.profiler = agent_profiler or AgentProfiler(self.db)
+        self.user_profiler = UserProfiler(self.db)
         self.transfer = transfer_protocol or TransferProtocol(self.db, self.procedural)
         self.assembler = context_assembler or ContextAssembler(
             self.db,
@@ -223,6 +226,12 @@ class ToolHandlers:
         )
 
         self.profiler.learn_from_episode({
+            "agent_id": episode.agent_id,
+            "action": episode.action,
+            "content_text": episode.content_text,
+        })
+
+        self.user_profiler.learn_from_episode({
             "agent_id": episode.agent_id,
             "action": episode.action,
             "content_text": episode.content_text,
@@ -876,7 +885,40 @@ class ToolHandlers:
             "count": len(available),
         }
 
-    # ── 16. myelin_sleep ──────────────────────────────────────
+    # ── 16. myelin_visualize ──────────────────────────────────
+
+    async def visualize(
+        self,
+        entity_name: str | None = None,
+        format: str = "mermaid",
+        depth: int = 2,
+    ) -> dict[str, Any]:
+        """Export the knowledge graph as Mermaid.js or D3.js JSON."""
+        viz = Visualizer(self.entities, self.graph)
+        output_format = format.lower()
+
+        if output_format == "mermaid":
+            result = viz.export_mermaid(entity_name, depth)
+            return {
+                "format": "mermaid",
+                "mermaid": result,
+                "markdown": f"```mermaid\n{result}```",
+                "node_count": sum(1 for _ in result.split("\n") if "-->" in _ or '["' in _),
+            }
+        elif output_format in ("d3_json", "d3json", "d3"):
+            result = viz.export_d3_json(entity_name, depth)
+            return {
+                "format": "d3_json",
+                "graph": result,
+                "node_count": len(result.get("nodes", [])),
+                "edge_count": len(result.get("links", [])),
+            }
+        else:
+            return {
+                "error": f"Unknown format '{format}'. Supported: mermaid, d3_json",
+            }
+
+    # ── 17. myelin_sleep ──────────────────────────────────────
 
     async def trigger_sleep(self, agent_id: str | None = None) -> dict[str, Any]:
         """Trigger sleep consolidation and procedure promotion manually."""
@@ -895,7 +937,47 @@ class ToolHandlers:
             "promoter": promoter_result,
         }
 
+    # ── 18. myelin_profile ─────────────────────────────────────
+
+    async def profile(self, agent_id: str) -> dict[str, Any]:
+        """Return the learned user profile for an agent.
+        
+        Returns static (stable preferences) and dynamic (recent context)
+        profile sections with confidence scores and category breakdown.
+        """
+        result = self.user_profiler.get_profile(agent_id)
+        result["markdown"] = self._format_profile_markdown(result)
+        return result
+
     # ── Internal helpers ───────────────────────────────────────
+
+    def _format_profile_markdown(self, profile: dict) -> str:
+        lines = [
+            f"## Profile: `{profile['agent_id']}`",
+            f"Facts: {profile['fact_count']} ({profile['static_count']} static, {profile['dynamic_count']} dynamic)",
+            "",
+        ]
+        if profile["static_facts"]:
+            lines.append("### Static Facts (Stable Traits)")
+            for f in profile["static_facts"]:
+                cat = f["category"].title()
+                conf = f["confidence"]
+                lines.append(f"- [{cat}] {f['fact']} (confidence: {conf:.2f})")
+            lines.append("")
+
+        if profile["dynamic_context"]:
+            lines.append("### Dynamic Context (Recent Activity)")
+            for f in profile["dynamic_context"]:
+                cat = f["category"].title()
+                conf = f["confidence"]
+                lines.append(f"- [{cat}] {f['fact']} (confidence: {conf:.2f})")
+            lines.append("")
+
+        if profile.get("category_breakdown"):
+            lines.append("### Category Breakdown")
+            for cat, count in sorted(profile["category_breakdown"].items()):
+                lines.append(f"- **{cat.title()}**: {count} facts")
+        return "\n".join(lines)
 
     def _check_learning_goals(self, domain: str | None, agent_id: str) -> None:
         if not domain:

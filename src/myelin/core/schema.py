@@ -469,6 +469,28 @@ CREATE TRIGGER IF NOT EXISTS semantic_au AFTER UPDATE ON semantic_nodes BEGIN
     VALUES (new.rowid, new.content, new.domain, new.tags);
 END;
 
+-- ============================================================
+-- USER PROFILING
+-- Learned preferences, style, priorities from episodes.
+-- Static/dynamic split inspired by Supermemory.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS profile_facts (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL,
+    fact TEXT NOT NULL,
+    category TEXT NOT NULL,  -- 'preference', 'style', 'priority', 'skill', 'fact'
+    confidence REAL DEFAULT 0.5,
+    is_static INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL,
+    last_observed TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_profile_facts_agent ON profile_facts(agent_id);
+CREATE INDEX IF NOT EXISTS idx_profile_facts_category ON profile_facts(agent_id, category);
+CREATE INDEX IF NOT EXISTS idx_profile_facts_static ON profile_facts(agent_id, is_static);
+CREATE INDEX IF NOT EXISTS idx_profile_facts_confidence ON profile_facts(agent_id, confidence DESC);
+
 -- FTS sync triggers for procedures
 CREATE TRIGGER IF NOT EXISTS procedures_ai AFTER INSERT ON procedures BEGIN
     INSERT INTO procedures_fts(rowid, name, description, trigger_pattern, domain)
@@ -492,6 +514,18 @@ END;
 def init_db(conn) -> None:
     """Initialize the database with the V2 schema."""
     conn.executescript(SCHEMA_SQL)
+
+    # Migrate existing agent_profiles table to add profile columns
+    # (only if table already exists without them — new DBs get them in CREATE)
+    existing_cols = {
+        row[1]
+        for row in conn.execute("PRAGMA table_info(agent_profiles)").fetchall()
+    }
+    for col in ("static_facts", "dynamic_context", "last_updated"):
+        if col not in existing_cols:
+            default = "'[]'" if col != "last_updated" else "NULL"
+            conn.execute(f"ALTER TABLE agent_profiles ADD COLUMN {col} TEXT DEFAULT {default}")
+
     conn.execute(
         "INSERT OR REPLACE INTO schema_meta (key, value) VALUES (?, ?)",
         ("version", str(SCHEMA_VERSION)),

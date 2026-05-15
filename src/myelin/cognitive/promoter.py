@@ -34,11 +34,11 @@ from ..memory.episodic import EpisodicMemory
 from ..memory.procedural import ProceduralMemory
 from .base import CognitiveProcess
 
-PROMOTION_THRESHOLD = 1.0
+PROMOTION_THRESHOLD = 0.5
 MIN_SESSIONS = 2
 MIN_STEPS = 2
-RECENT_FALLBACK_LIMIT = 1000
-RECENT_FALLBACK_SESSIONS = 100
+RECENT_FALLBACK_LIMIT = 2000
+RECENT_FALLBACK_SESSIONS = 10
 
 
 class Promoter(CognitiveProcess):
@@ -87,7 +87,7 @@ class Promoter(CognitiveProcess):
         for cluster_episodes in session_clusters:
             processed += 1
 
-            # 3. Check activation score
+            # 3. Check activation score (soft signal — skip only if really low AND small cluster)
             all_times: list[float] = []
             for ep in cluster_episodes:
                 times = ep.get("access_times", [])
@@ -95,8 +95,21 @@ class Promoter(CognitiveProcess):
                     times = json.loads(times)
                 all_times.extend(times)
 
-            activation = base_level_activation(all_times)
-            if activation < PROMOTION_THRESHOLD and len(cluster_episodes) < 10:
+            # Fall back to created_at if access_times is empty (fresh episodes)
+            if not all_times:
+                for ep in cluster_episodes:
+                    created = ep.get("created_at", "")
+                    if created:
+                        try:
+                            import datetime
+                            dt = datetime.datetime.fromisoformat(created)
+                            all_times.append(dt.timestamp())
+                        except (ValueError, TypeError):
+                            pass
+
+            activation = base_level_activation(all_times) if all_times else 0.0
+            # Allow promotion if we have enough sessions regardless of activation
+            if activation < PROMOTION_THRESHOLD and len(cluster_episodes) < 5:
                 continue
 
             # 4. Extract action sequences per session
@@ -141,6 +154,21 @@ class Promoter(CognitiveProcess):
         return {"processed": processed, "created": created}
 
     def _has_new_episodes_since_last_run(self) -> bool:
+        """Check if there are new episodes since the last promoter run.
+
+        Uses unconsolidated count first (fast path), but also falls back
+        to checking if *any* new episodes exist since last run. This
+        handles the case where the Consolidator already marked all
+        episodes as consolidated (because it runs first in on_session_end).
+        """
+        # Fast path: still have unconsolidated episodes
+        row = self.db.fetchone(
+            "SELECT COUNT(*) as cnt FROM episodes WHERE consolidated = 0",
+        )
+        if row and row["cnt"] > 0:
+            return True
+
+        # Fallback: check if there are any episodes created since last run
         last_run = self.db.fetchone(
             "SELECT completed_at FROM process_runs "
             "WHERE process_name = ? AND status = 'completed' "
@@ -148,27 +176,40 @@ class Promoter(CognitiveProcess):
             (self.name.value,),
         )
         if not last_run or not last_run.get("completed_at"):
-            return True
-        row = self.db.fetchone(
-            "SELECT COUNT(*) as cnt FROM episodes WHERE datetime(created_at) > datetime(?)",
+            # No prior promoter run: check if there are any episodes at all
+            total = self.db.fetchone("SELECT COUNT(*) as cnt FROM episodes")
+            return bool(total and total["cnt"] > 0)
+
+        row2 = self.db.fetchone(
+            "SELECT COUNT(*) as cnt FROM episodes WHERE created_at > ?",
             (last_run["completed_at"],),
         )
-        return bool(row and row["cnt"] > 0)
+        return bool(row2 and row2["cnt"] > 0)
 
     def _limit_to_recent_sessions(
         self,
         episodes: list[dict[str, Any]],
         max_sessions: int,
     ) -> list[dict[str, Any]]:
-        seen: set[str] = set()
-        selected_reversed: list[dict[str, Any]] = []
+        """Return all episodes from the most recent `max_sessions` distinct sessions.
+
+        Episodes are assumed to be in chronological order (oldest first).
+        We iterate from the end to find the most recent sessions, then
+        return all episodes belonging to those sessions in original order.
+        """
+        # Collect session IDs in reverse order (most recent first)
+        seen_sessions: set[str] = set()
+        recent_session_ids: list[str] = []
         for ep in reversed(episodes):
-            session_id = ep.get("session_id", "unknown")
-            if session_id not in seen and len(seen) >= max_sessions:
-                continue
-            seen.add(session_id)
-            selected_reversed.append(ep)
-        return list(reversed(selected_reversed))
+            sid = ep.get("session_id", "unknown")
+            if sid not in seen_sessions:
+                seen_sessions.add(sid)
+                recent_session_ids.append(sid)
+                if len(recent_session_ids) >= max_sessions:
+                    break
+
+        session_set = set(recent_session_ids)
+        return [ep for ep in episodes if ep.get("session_id", "unknown") in session_set]
 
     def _group_by_session(self, episodes: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
         sessions: dict[str, list[dict]] = defaultdict(list)

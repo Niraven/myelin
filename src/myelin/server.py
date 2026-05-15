@@ -404,11 +404,49 @@ TOOLS = [
         },
     ),
     Tool(
+        name="myelin_visualize",
+        description="Export the knowledge graph as Mermaid.js diagram or D3.js force-directed JSON. Make the brain visible.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "entity_name": {
+                    "type": "string",
+                    "description": "Optional: focus on a specific entity and its neighborhood. Omit for full graph.",
+                },
+                "format": {
+                    "type": "string",
+                    "enum": ["mermaid", "d3_json", "d3"],
+                    "default": "mermaid",
+                    "description": "Output format: mermaid (diagram-as-code), d3_json (force-directed graph JSON)",
+                },
+                "depth": {
+                    "type": "integer",
+                    "default": 2,
+                    "description": "Traversal depth when entity_name is set (1=direct neighbors, 2=two hops).",
+                },
+            },
+        },
+    ),
+    Tool(
         name="myelin_sleep",
         description="Trigger a sleep consolidation cycle: entity extraction, relationship inference, graph merging, temporal updates, cross-domain linking, and staleness detection.",
         inputSchema={
             "type": "object",
             "properties": {"agent_id": {"type": "string"}},
+        },
+    ),
+    Tool(
+        name="myelin_profile",
+        description="Get the learned user profile for an agent. Returns static (stable preferences, habits) and dynamic (recent activity, current projects) sections with confidence scores.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "agent_id": {
+                    "type": "string",
+                    "description": "Agent ID to get profile for",
+                },
+            },
+            "required": ["agent_id"],
         },
     ),
 ]
@@ -422,6 +460,8 @@ def create_server(
 ) -> Server:
     server = Server("myelin")
     db = Database(db_path)
+    # Provider is resolved now, but LocalEmbedding won't load the model until
+    # the first embed() call (lazy loading).
     embedder = get_embedding_provider(embedding_provider)
 
     episodic = EpisodicMemory(db)
@@ -499,6 +539,8 @@ def create_server(
             "myelin_transfer_import": handlers.transfer_import,
             "myelin_transfer_discover": handlers.transfer_discover,
             "myelin_sleep": handlers.trigger_sleep,
+            "myelin_visualize": handlers.visualize,
+            "myelin_profile": handlers.profile,
         }
 
         handler = handler_map.get(name)
@@ -530,7 +572,17 @@ def main():
         type=str,
         choices=["none", "local"],
         default="none",
-        help="Embedding provider (none=text search only, local=nomic-embed)",
+        help=argparse.SUPPRESS,  # deprecated, use --embedding-model
+    )
+    parser.add_argument(
+        "--embedding-model",
+        type=str,
+        default=None,
+        help=(
+            "Embedding mode: 'none' (text search only), 'local' (torch nomic-embed), "
+            "'onnx' (lazy int8-quantized ONNX), or 'api:<url>' (remote HTTP endpoint). "
+            "Overrides --embeddings when set."
+        ),
     )
     parser.add_argument(
         "--llm-extraction",
@@ -545,7 +597,9 @@ def main():
         help="LLM endpoint for query-time synthesis (e.g. http://localhost:11434/v1/chat/completions)",
     )
     args = parser.parse_args()
-    asyncio.run(run_server(args.db, args.embeddings, args.llm_extraction, args.synthesis_model))
+    # --embedding-model takes precedence over deprecated --embeddings
+    provider = args.embedding_model if args.embedding_model is not None else args.embeddings
+    asyncio.run(run_server(args.db, provider, args.llm_extraction, args.synthesis_model))
 
 
 if __name__ == "__main__":

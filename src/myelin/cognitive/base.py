@@ -28,11 +28,13 @@ class CognitiveProcess(ABC):
 
         try:
             result = await self.execute()
+            from datetime import datetime
+
             self.db.update(
                 "process_runs",
                 run.id,
                 {
-                    "completed_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                    "completed_at": datetime.utcnow().isoformat(),
                     "status": "completed",
                     "items_processed": result.get("processed", 0),
                     "items_created": result.get("created", 0),
@@ -42,11 +44,13 @@ class CognitiveProcess(ABC):
             )
             return result
         except Exception as e:
+            from datetime import datetime
+
             self.db.update(
                 "process_runs",
                 run.id,
                 {
-                    "completed_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                    "completed_at": datetime.utcnow().isoformat(),
                     "status": "failed",
                     "error": str(e),
                 },
