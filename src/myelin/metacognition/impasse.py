@@ -53,13 +53,21 @@ class ImpasseDetector:
         )
 
     def resolve_goal(self, goal_id: str) -> None:
-        self.db.update("learning_goals", goal_id, {
-            "status": GoalStatus.ACHIEVED.value,
-            "resolved_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
-        })
+        self.db.update(
+            "learning_goals",
+            goal_id,
+            {
+                "status": GoalStatus.ACHIEVED.value,
+                "resolved_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            },
+        )
 
     def abandon_goal(self, goal_id: str) -> None:
-        self.db.update("learning_goals", goal_id, {
-            "status": GoalStatus.ABANDONED.value,
-            "resolved_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
-        })
+        self.db.update(
+            "learning_goals",
+            goal_id,
+            {
+                "status": GoalStatus.ABANDONED.value,
+                "resolved_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            },
+        )

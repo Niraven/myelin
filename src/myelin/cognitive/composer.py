@@ -33,7 +33,7 @@ class Composer(CognitiveProcess):
             existing = self.db.fetchone(
                 "SELECT id FROM procedures WHERE is_composite = 1 "
                 "AND component_procedures LIKE ? AND component_procedures LIKE ?",
-                (f'%{proc_a["id"]}%', f'%{proc_b["id"]}%'),
+                (f"%{proc_a['id']}%", f"%{proc_b['id']}%"),
             )
             if existing:
                 continue

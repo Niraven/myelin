@@ -59,9 +59,7 @@ class TestExtractEntities:
         assert entities == []
 
     def test_multiple_types(self):
-        entities = extract_entities_from_text(
-            "Fix TypeError in deploy.py using docker build"
-        )
+        entities = extract_entities_from_text("Fix TypeError in deploy.py using docker build")
         types = {e["entity_type"] for e in entities}
         assert len(types) >= 2
 
@@ -69,10 +67,30 @@ class TestExtractEntities:
 class TestExtractRelations:
     def test_infers_sequence_relations(self):
         episodes = [
-            {"session_id": "s1", "timestamp": "2024-01-01T00:00:00", "content_text": "git pull", "action": "git pull"},
-            {"session_id": "s1", "timestamp": "2024-01-01T00:01:00", "content_text": "npm test", "action": "npm test"},
-            {"session_id": "s2", "timestamp": "2024-01-01T01:00:00", "content_text": "git pull", "action": "git pull"},
-            {"session_id": "s2", "timestamp": "2024-01-01T01:01:00", "content_text": "npm test", "action": "npm test"},
+            {
+                "session_id": "s1",
+                "timestamp": "2024-01-01T00:00:00",
+                "content_text": "git pull",
+                "action": "git pull",
+            },
+            {
+                "session_id": "s1",
+                "timestamp": "2024-01-01T00:01:00",
+                "content_text": "npm test",
+                "action": "npm test",
+            },
+            {
+                "session_id": "s2",
+                "timestamp": "2024-01-01T01:00:00",
+                "content_text": "git pull",
+                "action": "git pull",
+            },
+            {
+                "session_id": "s2",
+                "timestamp": "2024-01-01T01:01:00",
+                "content_text": "npm test",
+                "action": "npm test",
+            },
         ]
         relations = extract_relations_from_sequence(episodes)
         trigger_rels = [r for r in relations if r["relation_type"] == "triggers"]
@@ -126,6 +144,8 @@ class TestEntityStore:
         assert top[0]["mention_count"] == 5
 
     def test_search(self, store):
-        store.upsert_entity("docker compose", "tool", "docker compose", description="Container orchestration")
+        store.upsert_entity(
+            "docker compose", "tool", "docker compose", description="Container orchestration"
+        )
         results = store.search("docker")
         assert len(results) >= 1

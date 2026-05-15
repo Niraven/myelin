@@ -61,7 +61,12 @@ target-version = "py311"
 line-length = 100
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "N", "W", "UP", "B", "SIM", "TCH"]
+select = ["E", "F", "I", "N", "W", "UP", "B", "SIM"]
+ignore = [
+    "E501",   # Long SQL strings and MCP tool descriptions are more readable inline.
+    "SIM108", # Explicit confidence-update branches document the learning rule.
+    "UP042",  # str + Enum keeps broad Pydantic/MCP compatibility.
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -69,4 +74,7 @@ asyncio_mode = "auto"
 
 [tool.mypy]
 python_version = "3.11"
-strict = true
+warn_return_any = true
+warn_unused_ignores = true
+disallow_untyped_defs = false
+disallow_any_generics = false

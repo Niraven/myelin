@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Any, Protocol, cast
 
 
 class EmbeddingProvider(Protocol):
@@ -32,25 +32,28 @@ class LocalEmbedding:
     def __init__(self, model_name: str = "nomic-ai/nomic-embed-text-v1.5"):
         try:
             from sentence_transformers import SentenceTransformer
+
             self._model = SentenceTransformer(model_name, trust_remote_code=True)
-            self._dim = self._model.get_sentence_embedding_dimension()
-        except ImportError:
+            self._dim = int(self._model.get_sentence_embedding_dimension())
+        except ImportError as err:
             raise ImportError(
                 "sentence-transformers required. Install with: pip install myelin[embeddings]"
-            )
+            ) from err
 
     @property
     def dimension(self) -> int:
         return self._dim
 
     def embed(self, text: str) -> list[float]:
-        return self._model.encode(text, normalize_embeddings=True).tolist()
+        return cast(list[float], self._model.encode(text, normalize_embeddings=True).tolist())
 
     def embed_batch(self, texts: list[str]) -> list[list[float]]:
-        return self._model.encode(texts, normalize_embeddings=True).tolist()
+        return cast(
+            list[list[float]], self._model.encode(texts, normalize_embeddings=True).tolist()
+        )
 
 
-def get_embedding_provider(provider: str = "none", **kwargs) -> EmbeddingProvider:
+def get_embedding_provider(provider: str = "none", **kwargs: Any) -> EmbeddingProvider:
     if provider == "local":
         return LocalEmbedding(**kwargs)
     return NoOpEmbedding()

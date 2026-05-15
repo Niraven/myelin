@@ -8,7 +8,7 @@ from typing import Any
 
 from ..core.activation import base_level_activation
 from ..core.database import Database
-from ..core.models import ActionType, Episode
+from ..core.models import Episode
 
 
 class EpisodicMemory:
@@ -20,6 +20,7 @@ class EpisodicMemory:
         data = episode.model_dump()
         if data.get("embedding"):
             from ..core.database import _serialize_f32
+
             data["embedding"] = _serialize_f32(data["embedding"])
         self.db.insert("episodes", data)
         return episode.id
@@ -41,18 +42,20 @@ class EpisodicMemory:
             return
         times = json.loads(row["access_times"])
         times.append(time.time())
-        self.db.update("episodes", episode_id, {
-            "access_count": row["access_count"] + 1,
-            "access_times": times,
-            "last_accessed": time.strftime("%Y-%m-%dT%H:%M:%S"),
-        })
+        self.db.update(
+            "episodes",
+            episode_id,
+            {
+                "access_count": row["access_count"] + 1,
+                "access_times": times,
+                "last_accessed": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            },
+        )
 
     def search_text(self, query: str, limit: int = 10) -> list[dict[str, Any]]:
         return self.db.fts_search("episodes", "episodes_fts", query, limit=limit)
 
-    def search_vector(
-        self, query_vec: list[float], limit: int = 10
-    ) -> list[dict[str, Any]]:
+    def search_vector(self, query_vec: list[float], limit: int = 10) -> list[dict[str, Any]]:
         return self.db.vec_search("episodes", "embedding", query_vec, limit=limit)
 
     def search_hybrid(
@@ -61,13 +64,17 @@ class EpisodicMemory:
         query_vec: list[float] | None = None,
         limit: int = 10,
     ) -> list[dict[str, Any]]:
-        return self.db.hybrid_search(
-            "episodes", "episodes_fts", text_query, query_vec, limit=limit
-        )
+        return self.db.hybrid_search("episodes", "episodes_fts", text_query, query_vec, limit=limit)
 
     def get_unconsolidated(self, limit: int = 50) -> list[dict[str, Any]]:
         return self.db.fetchall(
             "SELECT * FROM episodes WHERE consolidated = 0 ORDER BY timestamp ASC LIMIT ?",
+            (limit,),
+        )
+
+    def get_recent(self, limit: int = 500) -> list[dict[str, Any]]:
+        return self.db.fetchall(
+            "SELECT * FROM episodes ORDER BY timestamp DESC LIMIT ?",
             (limit,),
         )
 
@@ -126,16 +133,22 @@ class EpisodicMemory:
             episodes = self.get_cluster(cid)
             all_times: list[float] = []
             for ep in episodes:
-                all_times.extend(json.loads(ep["access_times"]) if isinstance(ep["access_times"], str) else ep["access_times"])
+                all_times.extend(
+                    json.loads(ep["access_times"])
+                    if isinstance(ep["access_times"], str)
+                    else ep["access_times"]
+                )
 
             activation = base_level_activation(all_times)
             if activation > min_activation:
-                results.append({
-                    "cluster_id": cid,
-                    "activation": activation,
-                    "episode_count": len(episodes),
-                    "episodes": episodes,
-                })
+                results.append(
+                    {
+                        "cluster_id": cid,
+                        "activation": activation,
+                        "episode_count": len(episodes),
+                        "episodes": episodes,
+                    }
+                )
 
         results.sort(key=lambda x: x["activation"], reverse=True)
         return results

@@ -16,8 +16,6 @@ faster for local deployments.
 from __future__ import annotations
 
 import json
-import math
-import time
 from typing import Any
 
 from ..core.activation import base_level_activation
@@ -87,7 +85,7 @@ class MultiSignalRetriever:
                     entity_boost_ids.add(n["id"])
 
         scored: list[tuple[float, dict]] = []
-        for cid, candidate in candidates.items():
+        for _cid, candidate in candidates.items():
             text_score = candidate.get("_text_score", 0.0)
             vec_score = candidate.get("_vec_score", 0.0)
 
@@ -187,8 +185,7 @@ class MultiSignalRetriever:
         source_type = candidate.get("_source_type", "episode")
 
         mentions = self.db.fetchall(
-            "SELECT entity_id FROM entity_mentions "
-            "WHERE source_type = ? AND source_id = ?",
+            "SELECT entity_id FROM entity_mentions WHERE source_type = ? AND source_id = ?",
             (source_type, candidate_id),
         )
 
@@ -201,12 +198,15 @@ class MultiSignalRetriever:
 
     def _compute_temporal_score(self, candidate: dict[str, Any]) -> float:
         """Score based on recency. More recent = higher score."""
-        timestamp = candidate.get("timestamp") or candidate.get("created_at") or candidate.get("updated_at")
+        timestamp = (
+            candidate.get("timestamp") or candidate.get("created_at") or candidate.get("updated_at")
+        )
         if not timestamp:
             return 0.5
 
         try:
             from datetime import datetime
+
             created = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
             age_hours = (datetime.utcnow() - created.replace(tzinfo=None)).total_seconds() / 3600
             return 1.0 / (1.0 + age_hours / 168.0)

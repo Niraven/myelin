@@ -11,7 +11,6 @@ Trigger rules:
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import time
 from typing import Any
@@ -128,7 +127,15 @@ class CognitiveOrchestrator:
     def get_status(self) -> dict[str, Any]:
         """Get orchestrator status."""
         last_runs = {}
-        for process_name in ["consolidator", "reflector", "promoter", "composer", "decayer", "challenger", "sleep"]:
+        for process_name in [
+            "consolidator",
+            "reflector",
+            "promoter",
+            "composer",
+            "decayer",
+            "challenger",
+            "sleep",
+        ]:
             row = self.db.fetchone(
                 "SELECT * FROM process_runs WHERE process_name = ? ORDER BY started_at DESC LIMIT 1",
                 (process_name,),

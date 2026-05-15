@@ -4,7 +4,11 @@ import pytest
 
 from myelin.core.database import Database
 from myelin.core.models import (
-    AgentProfile, Procedure, ProcedureStatus, ProcedureStep, StepType,
+    AgentProfile,
+    Procedure,
+    ProcedureStatus,
+    ProcedureStep,
+    StepType,
 )
 from myelin.memory.procedural import ProceduralMemory
 from myelin.transfer.profiling import AgentProfiler
@@ -35,20 +39,24 @@ def protocol(db, procedural):
 
 
 def _register_agents(profiler):
-    profiler.register(AgentProfile(
-        agent_id="agent_a",
-        agent_name="Claude Agent",
-        tools=["git pull", "npm test", "npm build", "docker build"],
-        context_format="mcp_stdio",
-        model_family="claude",
-    ))
-    profiler.register(AgentProfile(
-        agent_id="agent_b",
-        agent_name="GPT Agent",
-        tools=["git pull", "npm test", "curl"],
-        context_format="mcp_stdio",
-        model_family="gpt",
-    ))
+    profiler.register(
+        AgentProfile(
+            agent_id="agent_a",
+            agent_name="Claude Agent",
+            tools=["git pull", "npm test", "npm build", "docker build"],
+            context_format="mcp_stdio",
+            model_family="claude",
+        )
+    )
+    profiler.register(
+        AgentProfile(
+            agent_id="agent_b",
+            agent_name="GPT Agent",
+            tools=["git pull", "npm test", "curl"],
+            context_format="mcp_stdio",
+            model_family="gpt",
+        )
+    )
 
 
 def _store_procedure(procedural):
@@ -158,21 +166,27 @@ class TestTransferProtocol:
 
 class TestAgentProfiler:
     def test_register_and_get(self, profiler):
-        profiler.register(AgentProfile(
-            agent_id="test_agent", tools=["git pull"], model_family="claude",
-        ))
+        profiler.register(
+            AgentProfile(
+                agent_id="test_agent",
+                tools=["git pull"],
+                model_family="claude",
+            )
+        )
         profile = profiler.get("test_agent")
         assert profile is not None
         assert profile["agent_id"] == "test_agent"
 
     def test_similarity_identical(self, profiler):
         _register_agents(profiler)
-        profiler.register(AgentProfile(
-            agent_id="agent_a_clone",
-            tools=["git pull", "npm test", "npm build", "docker build"],
-            context_format="mcp_stdio",
-            model_family="claude",
-        ))
+        profiler.register(
+            AgentProfile(
+                agent_id="agent_a_clone",
+                tools=["git pull", "npm test", "npm build", "docker build"],
+                context_format="mcp_stdio",
+                model_family="claude",
+            )
+        )
         sim = profiler.compute_similarity("agent_a", "agent_a_clone")
         assert sim > 0.8
 

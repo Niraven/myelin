@@ -1,12 +1,10 @@
 """Test ClustalW-inspired sequence alignment."""
 
 from myelin.memory.alignment import (
-    AlignedStep,
     GAP,
     action_match_score,
     extract_consensus,
     needleman_wunsch,
-    pairwise_distances,
     progressive_align,
 )
 
@@ -120,9 +118,7 @@ class TestExtractConsensus:
             ["git pull", "npm install", "npm test"],
         ]
         consensus = extract_consensus(alignment)
-        variant_step = next(
-            (s for s in consensus if s.has_variants), None
-        )
+        variant_step = next((s for s in consensus if s.has_variants), None)
         assert variant_step is not None
 
     def test_empty_alignment(self):

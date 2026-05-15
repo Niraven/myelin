@@ -21,9 +21,6 @@ Trigger: session end (alongside other cognitive processes) or manual.
 
 from __future__ import annotations
 
-import json
-import time
-from collections import Counter, defaultdict
 from typing import Any
 
 from ..core.database import Database
@@ -161,7 +158,17 @@ class SleepCycle(CognitiveProcess):
     def _update_temporal_states(self, episodes: list[dict[str, Any]]) -> int:
         """Create temporal states from episodes that indicate state changes."""
         updated = 0
-        state_keywords = {"deploy", "migrate", "update", "upgrade", "install", "configure", "fix", "break", "fail"}
+        state_keywords = {
+            "deploy",
+            "migrate",
+            "update",
+            "upgrade",
+            "install",
+            "configure",
+            "fix",
+            "break",
+            "fail",
+        }
 
         for ep in episodes:
             action = ep.get("action", "").lower()
@@ -212,7 +219,7 @@ class SleepCycle(CognitiveProcess):
         for entity in cross_domain:
             domains = entity["domains"].split(",") if entity["domains"] else []
             for i, d1 in enumerate(domains):
-                for d2 in domains[i + 1:]:
+                for _d2 in domains[i + 1 :]:
                     domain_entities_1 = self.db.fetchall(
                         "SELECT id FROM entities WHERE domain = ? AND id != ? LIMIT 5",
                         (d1, entity["id"]),
@@ -236,6 +243,7 @@ class SleepCycle(CognitiveProcess):
     def _flag_stale_entities(self, stale_days: int = 14) -> int:
         """Count entities not seen in recent episodes."""
         from datetime import datetime, timedelta
+
         cutoff = (datetime.utcnow() - timedelta(days=stale_days)).isoformat()
         row = self.db.fetchone(
             "SELECT COUNT(*) as cnt FROM entities WHERE last_seen < ?",

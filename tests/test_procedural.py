@@ -1,12 +1,9 @@
 """Test procedural memory operations."""
 
-import time
-
 from myelin.core.models import (
     Procedure,
     ProcedureStatus,
     ProcedureStep,
-    PromotionMethod,
     StepType,
 )
 
@@ -99,7 +96,9 @@ def test_find_matching_by_text(procedural):
 
 
 def test_count_by_status(procedural):
-    for i, status in enumerate([ProcedureStatus.DRAFT, ProcedureStatus.ACTIVE, ProcedureStatus.ACTIVE]):
+    for i, status in enumerate(
+        [ProcedureStatus.DRAFT, ProcedureStatus.ACTIVE, ProcedureStatus.ACTIVE]
+    ):
         proc = _make_procedure(name=f"proc_{i}", status=status)
         procedural.store(proc)
 

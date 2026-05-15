@@ -3,15 +3,6 @@
 import pytest
 
 from myelin.core.database import Database
-from myelin.core.models import (
-    ActionType,
-    AgentProfile,
-    Episode,
-    Procedure,
-    ProcedureStatus,
-    ProcedureStep,
-    StepType,
-)
 from myelin.intelligence.context import ContextAssembler
 from myelin.knowledge.entities import EntityStore
 from myelin.knowledge.graph import KnowledgeGraph

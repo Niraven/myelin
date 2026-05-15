@@ -13,7 +13,6 @@ and suggested actions, all ranked and budgeted.
 from __future__ import annotations
 
 import json
-import time
 from typing import Any
 
 from ..core.database import Database
@@ -130,17 +129,19 @@ class ContextAssembler:
                 except (json.JSONDecodeError, TypeError):
                     steps = []
 
-            results.append({
-                "id": m["id"],
-                "name": m["name"],
-                "confidence": m.get("confidence", 0.5),
-                "status": m.get("status", "draft"),
-                "steps": steps,
-                "preconditions": _parse_json_field(m.get("preconditions", "[]")),
-                "postconditions": _parse_json_field(m.get("postconditions", "[]")),
-                "success_rate": m.get("actual_success_rate"),
-                "execution_count": (m.get("success_count", 0) + m.get("failure_count", 0)),
-            })
+            results.append(
+                {
+                    "id": m["id"],
+                    "name": m["name"],
+                    "confidence": m.get("confidence", 0.5),
+                    "status": m.get("status", "draft"),
+                    "steps": steps,
+                    "preconditions": _parse_json_field(m.get("preconditions", "[]")),
+                    "postconditions": _parse_json_field(m.get("postconditions", "[]")),
+                    "success_rate": m.get("actual_success_rate"),
+                    "execution_count": (m.get("success_count", 0) + m.get("failure_count", 0)),
+                }
+            )
         return results
 
     def _build_entity_context(
@@ -199,9 +200,7 @@ class ContextAssembler:
         return context
 
     def _get_domain_confidence(self, domain: str) -> dict[str, Any] | None:
-        row = self.db.fetchone(
-            "SELECT * FROM confidence_map WHERE domain = ?", (domain,)
-        )
+        row = self.db.fetchone("SELECT * FROM confidence_map WHERE domain = ?", (domain,))
         if not row:
             return None
         return {
@@ -238,8 +237,7 @@ class ContextAssembler:
             state = entity.get("temporal_state")
             if state and state.get("confidence", 0) < 0.5:
                 suggestions.append(
-                    f"Verify state of {entity['name']}: "
-                    f"'{state['description']}' has low confidence"
+                    f"Verify state of {entity['name']}: '{state['description']}' has low confidence"
                 )
 
         return suggestions
@@ -274,7 +272,7 @@ class ContextAssembler:
                 )
                 for i, step in enumerate(p["steps"][:5]):
                     desc = step.get("description", step) if isinstance(step, dict) else step
-                    lines.append(f"  {i+1}. {desc}")
+                    lines.append(f"  {i + 1}. {desc}")
             sections.append("\n".join(lines))
 
         if entity_context:
@@ -311,12 +309,13 @@ class ContextAssembler:
         return "\n\n".join(sections)
 
 
-def _parse_json_field(value: Any) -> list:
+def _parse_json_field(value: Any) -> list[Any]:
     if isinstance(value, list):
-        return value
+        return list(value)
     if isinstance(value, str):
         try:
-            return json.loads(value)
+            parsed = json.loads(value)
+            return list(parsed) if isinstance(parsed, list) else []
         except (json.JSONDecodeError, TypeError):
             return []
     return []

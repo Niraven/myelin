@@ -5,13 +5,12 @@ Trigger: hourly.
 
 from __future__ import annotations
 
-import time
 from datetime import datetime
 from typing import Any
 
 from ..core.activation import ebbinghaus_decay
 from ..core.database import Database
-from ..core.models import ProcessName, ProcedureStatus
+from ..core.models import ProcedureStatus, ProcessName
 from .base import CognitiveProcess
 
 ARCHIVE_THRESHOLD = 0.1
@@ -47,7 +46,6 @@ class Decayer(CognitiveProcess):
             (ProcedureStatus.ACTIVE.value, ProcedureStatus.DRAFT.value),
         )
 
-        now = time.time()
         for proc in procedures:
             last_exec = proc.get("last_executed")
             if not last_exec:

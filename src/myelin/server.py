@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-from pathlib import Path
+from typing import Any
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
@@ -32,15 +32,27 @@ TOOLS = [
         inputSchema={
             "type": "object",
             "properties": {
-                "agent_id": {"type": "string", "description": "Unique identifier for the calling agent"},
+                "agent_id": {
+                    "type": "string",
+                    "description": "Unique identifier for the calling agent",
+                },
                 "session_id": {"type": "string", "description": "Current session identifier"},
                 "action": {"type": "string", "description": "What the agent did"},
-                "action_type": {"type": "string", "enum": ["tool_call", "response", "error", "user_input"]},
-                "content_text": {"type": "string", "description": "Full text description for search indexing"},
+                "action_type": {
+                    "type": "string",
+                    "enum": ["tool_call", "response", "error", "user_input"],
+                },
+                "content_text": {
+                    "type": "string",
+                    "description": "Full text description for search indexing",
+                },
                 "input_context": {"type": "object", "description": "What triggered this action"},
                 "output_result": {"type": "object", "description": "What the action produced"},
                 "success": {"type": "boolean", "default": True},
-                "domain": {"type": "string", "description": "Inferred domain (e.g. 'deployment', 'testing')"},
+                "domain": {
+                    "type": "string",
+                    "description": "Inferred domain (e.g. 'deployment', 'testing')",
+                },
                 "tags": {"type": "array", "items": {"type": "string"}},
             },
             "required": ["agent_id", "session_id", "action", "action_type", "content_text"],
@@ -54,7 +66,10 @@ TOOLS = [
             "properties": {
                 "query": {"type": "string"},
                 "limit": {"type": "integer", "default": 10},
-                "memory_types": {"type": "array", "items": {"type": "string", "enum": ["episodic", "semantic", "procedural"]}},
+                "memory_types": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": ["episodic", "semantic", "procedural"]},
+                },
                 "domain": {"type": "string"},
                 "min_confidence": {"type": "number", "default": 0.0},
             },
@@ -121,8 +136,23 @@ TOOLS = [
             "type": "object",
             "properties": {
                 "name": {"type": "string"},
-                "trigger_pattern": {"type": "string", "description": "When to suggest this procedure"},
-                "steps": {"type": "array", "items": {"type": "object", "properties": {"description": {"type": "string"}, "type": {"type": "string", "enum": ["core", "variant", "optional"]}, "variants": {"type": "array", "items": {"type": "string"}}, "condition": {"type": "string"}}, "required": ["description"]}},
+                "trigger_pattern": {
+                    "type": "string",
+                    "description": "When to suggest this procedure",
+                },
+                "steps": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "description": {"type": "string"},
+                            "type": {"type": "string", "enum": ["core", "variant", "optional"]},
+                            "variants": {"type": "array", "items": {"type": "string"}},
+                            "condition": {"type": "string"},
+                        },
+                        "required": ["description"],
+                    },
+                },
                 "agent_id": {"type": "string"},
                 "description": {"type": "string"},
                 "preconditions": {"type": "array", "items": {"type": "string"}},
@@ -149,7 +179,10 @@ TOOLS = [
                 "query": {"type": "string"},
                 "limit": {"type": "integer", "default": 10},
                 "domain": {"type": "string"},
-                "weights": {"type": "object", "description": "Signal weights: text, vector, entity, temporal, activation (0-1 each)"},
+                "weights": {
+                    "type": "object",
+                    "description": "Signal weights: text, vector, entity, temporal, activation (0-1 each)",
+                },
             },
             "required": ["query"],
         },
@@ -187,7 +220,20 @@ TOOLS = [
             "type": "object",
             "properties": {
                 "search": {"type": "string", "description": "Search term"},
-                "entity_type": {"type": "string", "enum": ["tool", "service", "concept", "file", "person", "config", "error", "command", "pattern"]},
+                "entity_type": {
+                    "type": "string",
+                    "enum": [
+                        "tool",
+                        "service",
+                        "concept",
+                        "file",
+                        "person",
+                        "config",
+                        "error",
+                        "command",
+                        "pattern",
+                    ],
+                },
                 "limit": {"type": "integer", "default": 20},
             },
         },
@@ -211,7 +257,10 @@ TOOLS = [
         inputSchema={
             "type": "object",
             "properties": {
-                "package": {"type": "object", "description": "Transfer package from myelin_transfer_export"},
+                "package": {
+                    "type": "object",
+                    "description": "Transfer package from myelin_transfer_export",
+                },
                 "agent_id": {"type": "string", "description": "Receiving agent ID"},
             },
             "required": ["package", "agent_id"],
@@ -262,7 +311,10 @@ def create_server(db_path: str | None = None, embedding_provider: str = "none") 
     transfer = TransferProtocol(db, procedural)
 
     handlers = ToolHandlers(
-        episodic, semantic, procedural, embedder,
+        episodic,
+        semantic,
+        procedural,
+        embedder,
         entity_store=entity_store,
         graph=graph,
         temporal=temporal,
@@ -277,8 +329,8 @@ def create_server(db_path: str | None = None, embedding_provider: str = "none") 
         return TOOLS
 
     @server.call_tool()
-    async def call_tool(name: str, arguments: dict) -> list[TextContent]:
-        handler_map = {
+    async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
+        handler_map: dict[str, Any] = {
             "myelin_observe": handlers.observe,
             "myelin_recall": handlers.recall,
             "myelin_context": handlers.context,

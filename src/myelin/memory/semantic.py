@@ -7,7 +7,7 @@ import time
 from typing import Any
 
 from ..core.database import Database
-from ..core.models import NodeType, SemanticNode, SourceType
+from ..core.models import NodeType, SemanticNode
 
 
 class SemanticMemory:
@@ -18,6 +18,7 @@ class SemanticMemory:
         data = node.model_dump()
         if data.get("embedding"):
             from ..core.database import _serialize_f32
+
             data["embedding"] = _serialize_f32(data["embedding"])
         self.db.insert("semantic_nodes", data)
         return node.id
@@ -39,11 +40,15 @@ class SemanticMemory:
             return
         times = json.loads(row["access_times"])
         times.append(time.time())
-        self.db.update("semantic_nodes", node_id, {
-            "access_count": row["access_count"] + 1,
-            "access_times": times,
-            "last_accessed": time.strftime("%Y-%m-%dT%H:%M:%S"),
-        })
+        self.db.update(
+            "semantic_nodes",
+            node_id,
+            {
+                "access_count": row["access_count"] + 1,
+                "access_times": times,
+                "last_accessed": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            },
+        )
 
     def search_text(self, query: str, limit: int = 10) -> list[dict[str, Any]]:
         return self.db.fts_search("semantic_nodes", "semantic_fts", query, limit=limit)
@@ -82,10 +87,14 @@ class SemanticMemory:
 
     def supersede(self, old_id: str, new_node: SemanticNode) -> str:
         """Replace a semantic node with a newer version."""
-        self.db.update("semantic_nodes", old_id, {
-            "valid_until": time.strftime("%Y-%m-%dT%H:%M:%S"),
-            "superseded_by": new_node.id,
-        })
+        self.db.update(
+            "semantic_nodes",
+            old_id,
+            {
+                "valid_until": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                "superseded_by": new_node.id,
+            },
+        )
         return self.store(new_node)
 
     def count(self, node_type: NodeType | None = None) -> int:

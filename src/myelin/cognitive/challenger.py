@@ -6,12 +6,11 @@ Trigger: on conflict detection (when a new episode contradicts an existing belie
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from ..core.activation import bayesian_confidence_update
 from ..core.database import Database
-from ..core.models import NodeType, ProcessName, SemanticNode, SourceType
+from ..core.models import NodeType, ProcessName
 from ..memory.semantic import SemanticMemory
 from .base import CognitiveProcess
 
@@ -46,9 +45,13 @@ class Challenger(CognitiveProcess):
             new_confidence = bayesian_confidence_update(
                 fact["confidence"], success=False, learning_rate=0.05
             )
-            self.db.update("semantic_nodes", fact["id"], {
-                "confidence": new_confidence,
-            })
+            self.db.update(
+                "semantic_nodes",
+                fact["id"],
+                {
+                    "confidence": new_confidence,
+                },
+            )
             modified += 1
 
         return {"processed": len(stale_facts), "modified": modified}

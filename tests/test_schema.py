@@ -1,13 +1,10 @@
 """Test SQLite schema initialization."""
 
-from myelin.core.database import Database
 from myelin.core.schema import SCHEMA_VERSION
 
 
 def test_schema_creates_all_tables(tmp_db):
-    tables = tmp_db.fetchall(
-        "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
-    )
+    tables = tmp_db.fetchall("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
     table_names = {t["name"] for t in tables}
 
     expected = {

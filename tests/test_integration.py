@@ -12,6 +12,7 @@ from myelin.memory.embedding import NoOpEmbedding
 from myelin.memory.episodic import EpisodicMemory
 from myelin.memory.procedural import ProceduralMemory
 from myelin.memory.semantic import SemanticMemory
+from myelin.session import Session
 from myelin.tools.handlers import ToolHandlers
 from myelin.transfer.profiling import AgentProfiler
 
@@ -39,8 +40,10 @@ class TestObserveAndRecall:
 
     async def test_observe_then_recall(self, handlers):
         await handlers.observe(
-            agent_id="agent1", session_id="s1",
-            action="git pull origin main", action_type="tool_call",
+            agent_id="agent1",
+            session_id="s1",
+            action="git pull origin main",
+            action_type="tool_call",
             content_text="Pulled latest changes from main branch",
             domain="deployment",
         )
@@ -49,8 +52,10 @@ class TestObserveAndRecall:
 
     async def test_observe_extracts_entities(self, handlers):
         await handlers.observe(
-            agent_id="agent1", session_id="s1",
-            action="npm test", action_type="tool_call",
+            agent_id="agent1",
+            session_id="s1",
+            action="npm test",
+            action_type="tool_call",
             content_text="Running npm test in the project",
             domain="testing",
         )
@@ -60,8 +65,10 @@ class TestObserveAndRecall:
     async def test_observe_updates_confidence(self, handlers):
         for i in range(5):
             await handlers.observe(
-                agent_id="agent1", session_id="s1",
-                action=f"deploy v{i}", action_type="tool_call",
+                agent_id="agent1",
+                session_id="s1",
+                action=f"deploy v{i}",
+                action_type="tool_call",
                 content_text=f"Deploying version {i} to production",
                 domain="deployment",
             )
@@ -74,8 +81,10 @@ class TestContextAssembly:
 
     async def test_context_with_observations(self, handlers):
         await handlers.observe(
-            agent_id="agent1", session_id="s1",
-            action="docker build", action_type="tool_call",
+            agent_id="agent1",
+            session_id="s1",
+            action="docker build",
+            action_type="tool_call",
             content_text="Building docker image for deployment",
             domain="deployment",
         )
@@ -125,15 +134,11 @@ class TestProcedureLifecycle:
         assert exec_result["found"] is True
         assert exec_result["procedure_id"] == proc_id
 
-        feedback = await handlers.procedure_feedback(
-            procedure_id=proc_id, success=True
-        )
+        feedback = await handlers.procedure_feedback(procedure_id=proc_id, success=True)
         assert feedback["new_confidence"] > 0.7
         assert feedback["success_count"] == 1
 
-        feedback2 = await handlers.procedure_feedback(
-            procedure_id=proc_id, success=True
-        )
+        feedback2 = await handlers.procedure_feedback(procedure_id=proc_id, success=True)
         assert feedback2["new_confidence"] > feedback["new_confidence"]
 
     async def test_failure_decreases_confidence(self, handlers):
@@ -144,10 +149,42 @@ class TestProcedureLifecycle:
             agent_id="agent1",
         )
         proc_id = teach_result["procedure_id"]
-        feedback = await handlers.procedure_feedback(
-            procedure_id=proc_id, success=False
-        )
+        feedback = await handlers.procedure_feedback(procedure_id=proc_id, success=False)
         assert feedback["new_confidence"] < 0.7
+
+    async def test_repeated_workflows_promote_executable_procedure(self, db, handlers):
+        workflow = [
+            "git pull origin main",
+            "npm test",
+            "docker build myelin:latest",
+            "docker push registry/myelin:latest",
+            "kubectl rollout restart deployment/myelin",
+        ]
+
+        for run in range(5):
+            session = Session(db, agent_id="demo-agent", session_id=f"deploy-{run}")
+            for action in workflow:
+                await session.observe(
+                    action=action,
+                    action_type="tool_call",
+                    content_text=f"{action} during production deployment",
+                    domain="deployment",
+                )
+
+        final_session = Session(db, agent_id="demo-agent", session_id="launch-proof")
+        result = await final_session.end()
+
+        promoter_result = next(
+            item for item in result["cognitive_results"] if item["process"] == "promoter"
+        )
+        assert promoter_result["created"] >= 1
+
+        execution = await handlers.execute_procedure(
+            query="deployment workflow",
+            agent_id="demo-agent",
+        )
+        assert execution["found"] is True
+        assert len(execution["steps"]) >= 3
 
 
 class TestMultiSignalQuery:
@@ -155,14 +192,18 @@ class TestMultiSignalQuery:
 
     async def test_query_with_entity_boosting(self, handlers):
         await handlers.observe(
-            agent_id="agent1", session_id="s1",
-            action="git pull", action_type="tool_call",
+            agent_id="agent1",
+            session_id="s1",
+            action="git pull",
+            action_type="tool_call",
             content_text="Pulled latest with git pull origin main",
             domain="dev",
         )
         await handlers.observe(
-            agent_id="agent1", session_id="s1",
-            action="npm test", action_type="tool_call",
+            agent_id="agent1",
+            session_id="s1",
+            action="npm test",
+            action_type="tool_call",
             content_text="Running npm test after git pull",
             domain="dev",
         )
@@ -171,8 +212,10 @@ class TestMultiSignalQuery:
 
     async def test_query_with_custom_weights(self, handlers):
         await handlers.observe(
-            agent_id="agent1", session_id="s1",
-            action="deploy", action_type="tool_call",
+            agent_id="agent1",
+            session_id="s1",
+            action="deploy",
+            action_type="tool_call",
             content_text="Deploying the application",
             domain="ops",
         )
@@ -188,8 +231,10 @@ class TestKnowledgeGraph:
 
     async def test_graph_query_after_observations(self, handlers):
         await handlers.observe(
-            agent_id="agent1", session_id="s1",
-            action="git pull", action_type="tool_call",
+            agent_id="agent1",
+            session_id="s1",
+            action="git pull",
+            action_type="tool_call",
             content_text="Running git pull origin main",
         )
         result = await handlers.graph_query(entity_name="git pull")
@@ -212,16 +257,20 @@ class TestTransferFlow:
 
     async def test_discover_export_import(self, handlers, db):
         profiler = AgentProfiler(db)
-        profiler.register(AgentProfile(
-            agent_id="claude_agent",
-            tools=["git pull", "npm test", "docker build"],
-            model_family="claude",
-        ))
-        profiler.register(AgentProfile(
-            agent_id="gpt_agent",
-            tools=["git pull", "npm test"],
-            model_family="gpt",
-        ))
+        profiler.register(
+            AgentProfile(
+                agent_id="claude_agent",
+                tools=["git pull", "npm test", "docker build"],
+                model_family="claude",
+            )
+        )
+        profiler.register(
+            AgentProfile(
+                agent_id="gpt_agent",
+                tools=["git pull", "npm test"],
+                model_family="gpt",
+            )
+        )
 
         teach_result = await handlers.teach(
             name="CI Pipeline",
@@ -267,8 +316,10 @@ class TestSleepCycle:
 
     async def test_trigger_sleep(self, handlers):
         await handlers.observe(
-            agent_id="agent1", session_id="s1",
-            action="deploy v2", action_type="tool_call",
+            agent_id="agent1",
+            session_id="s1",
+            action="deploy v2",
+            action_type="tool_call",
             content_text="Deployed version 2 to production",
             domain="deployment",
         )
@@ -282,8 +333,10 @@ class TestStatus:
 
     async def test_status_returns_all_metrics(self, handlers):
         await handlers.observe(
-            agent_id="agent1", session_id="s1",
-            action="test", action_type="tool_call",
+            agent_id="agent1",
+            session_id="s1",
+            action="test",
+            action_type="tool_call",
             content_text="Running a test",
         )
         status = await handlers.status(agent_id="agent1")

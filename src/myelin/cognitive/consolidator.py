@@ -27,7 +27,6 @@ class Consolidator(CognitiveProcess):
         self.semantic = semantic
 
     def should_run(self) -> bool:
-        unconsolidated = self.episodic.get_unconsolidated(limit=1)
         count = self.episodic.db.fetchone(
             "SELECT COUNT(*) as cnt FROM episodes WHERE consolidated = 0"
         )
@@ -60,9 +59,7 @@ class Consolidator(CognitiveProcess):
 
         return {"processed": len(episodes), "created": created}
 
-    def _cluster_by_domain(
-        self, episodes: list[dict[str, Any]]
-    ) -> dict[str, list[dict[str, Any]]]:
+    def _cluster_by_domain(self, episodes: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
         clusters: dict[str, list] = {}
         for ep in episodes:
             domain = ep.get("domain") or "general"

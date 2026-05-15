@@ -17,7 +17,6 @@ Algorithm:
 from __future__ import annotations
 
 from collections import Counter
-from typing import Any
 
 GAP = "-"
 
@@ -77,7 +76,11 @@ def needleman_wunsch(
     i, j = m, n
 
     while i > 0 or j > 0:
-        if i > 0 and j > 0 and dp[i][j] == dp[i - 1][j - 1] + action_match_score(seq_a[i - 1], seq_b[j - 1]):
+        if (
+            i > 0
+            and j > 0
+            and dp[i][j] == dp[i - 1][j - 1] + action_match_score(seq_a[i - 1], seq_b[j - 1])
+        ):
             aligned_a.append(seq_a[i - 1])
             aligned_b.append(seq_b[j - 1])
             i -= 1
@@ -138,7 +141,7 @@ def upgma_tree(distances: list[list[float]]) -> list[tuple[int | tuple, int | tu
         active_list = sorted(active)
 
         for idx, ci in enumerate(active_list):
-            for cj in active_list[idx + 1:]:
+            for cj in active_list[idx + 1 :]:
                 key = (min(ci, cj), max(ci, cj))
                 d = dist.get(key, float("inf"))
                 if d < best_dist:
@@ -154,7 +157,7 @@ def upgma_tree(distances: list[list[float]]) -> list[tuple[int | tuple, int | tu
 
         # Update distances (average linkage)
         for ck in active:
-            if ck == ci or ck == cj:
+            if ck in (ci, cj):
                 continue
             d_ci = dist.get((min(ci, ck), max(ci, ck)), 0.0)
             d_cj = dist.get((min(cj, ck), max(cj, ck)), 0.0)
@@ -221,7 +224,6 @@ def _apply_alignment_to_profile(
     for seq in profile:
         new_seq: list[str] = []
         seq_idx = 0
-        orig_idx = 0
 
         for ac in aligned_consensus:
             if ac == GAP:
@@ -261,9 +263,7 @@ def progressive_align(sequences: list[list[str]]) -> list[list[str]]:
     merges = upgma_tree(distances)
 
     # Build profiles following merge order
-    profiles: dict[int, list[list[str]]] = {
-        i: [seq] for i, seq in enumerate(sequences)
-    }
+    profiles: dict[int, list[list[str]]] = {i: [seq] for i, seq in enumerate(sequences)}
 
     next_id = n
     for ci, cj in merges:
@@ -294,7 +294,7 @@ class AlignedStep:
         self.position = position
         self.actions = actions
         self.total = total_sequences
-        self.primary_action = max(actions, key=actions.get) if actions else ""
+        self.primary_action = max(actions, key=lambda action: actions[action]) if actions else ""
         self.frequency = max(actions.values()) / total_sequences if actions else 0.0
 
     @property

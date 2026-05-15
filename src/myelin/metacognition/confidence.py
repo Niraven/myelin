@@ -14,21 +14,23 @@ class ConfidenceMap:
         self.db = db
 
     def update_domain(self, domain: str, episode_delta: int = 0, procedure_delta: int = 0) -> None:
-        existing = self.db.fetchone(
-            "SELECT * FROM confidence_map WHERE domain = ?", (domain,)
-        )
+        existing = self.db.fetchone("SELECT * FROM confidence_map WHERE domain = ?", (domain,))
 
         if existing:
             new_ep = existing["episode_count"] + episode_delta
             new_proc = existing["procedure_count"] + procedure_delta
             confidence = self._compute_domain_confidence(new_ep, new_proc)
-            self.db.update("confidence_map", existing["id"], {
-                "confidence": confidence,
-                "episode_count": new_ep,
-                "procedure_count": new_proc,
-                "last_activity": time.strftime("%Y-%m-%dT%H:%M:%S"),
-                "updated_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
-            })
+            self.db.update(
+                "confidence_map",
+                existing["id"],
+                {
+                    "confidence": confidence,
+                    "episode_count": new_ep,
+                    "procedure_count": new_proc,
+                    "last_activity": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                    "updated_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                },
+            )
         else:
             dc = DomainConfidence(
                 domain=domain,

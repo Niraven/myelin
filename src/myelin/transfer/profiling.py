@@ -28,9 +28,7 @@ class AgentProfiler:
             self.db.insert("agent_profiles", data)
 
     def get(self, agent_id: str) -> dict[str, Any] | None:
-        return self.db.fetchone(
-            "SELECT * FROM agent_profiles WHERE agent_id = ?", (agent_id,)
-        )
+        return self.db.fetchone("SELECT * FROM agent_profiles WHERE agent_id = ?", (agent_id,))
 
     def compute_similarity(self, agent_a: str, agent_b: str) -> float:
         profile_a = self.get(agent_a)
@@ -39,11 +37,21 @@ class AgentProfiler:
             return 0.3
 
         import json
-        tools_a = set(json.loads(profile_a["tools"]) if isinstance(profile_a["tools"], str) else profile_a["tools"])
-        tools_b = set(json.loads(profile_b["tools"]) if isinstance(profile_b["tools"], str) else profile_b["tools"])
+
+        tools_a = set(
+            json.loads(profile_a["tools"])
+            if isinstance(profile_a["tools"], str)
+            else profile_a["tools"]
+        )
+        tools_b = set(
+            json.loads(profile_b["tools"])
+            if isinstance(profile_b["tools"], str)
+            else profile_b["tools"]
+        )
 
         return agent_similarity(
-            tools_a, tools_b,
+            tools_a,
+            tools_b,
             profile_a.get("context_format", ""),
             profile_b.get("context_format", ""),
             profile_a.get("model_family", ""),

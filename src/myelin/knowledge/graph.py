@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import json
 import time
-from collections import defaultdict, deque
+from collections import deque
 from typing import Any
 from uuid import uuid4
 
@@ -53,17 +53,21 @@ class KnowledgeGraph:
         )
 
         if existing:
-            rel_id = existing["id"]
+            rel_id = str(existing["id"])
             episodes = json.loads(existing["evidence_episodes"] or "[]")
             if episode_id and episode_id not in episodes:
                 episodes.append(episode_id)
             new_strength = min(existing["strength"] + 0.1, 10.0)
-            self.db.update("relationships", rel_id, {
-                "strength": new_strength,
-                "evidence_count": existing["evidence_count"] + 1,
-                "evidence_episodes": episodes,
-                "last_observed": time.strftime("%Y-%m-%dT%H:%M:%S"),
-            })
+            self.db.update(
+                "relationships",
+                rel_id,
+                {
+                    "strength": new_strength,
+                    "evidence_count": existing["evidence_count"] + 1,
+                    "evidence_episodes": episodes,
+                    "last_observed": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                },
+            )
             return rel_id
 
         rel_id = _new_id()

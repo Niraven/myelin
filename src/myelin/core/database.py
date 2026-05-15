@@ -45,6 +45,7 @@ class Database:
             if self._enable_vec:
                 try:
                     import sqlite_vec  # noqa: F401
+
                     self._conn.enable_load_extension(True)
                     sqlite_vec.load(self._conn)
                     self._vec_available = True
@@ -85,7 +86,7 @@ class Database:
     # ── Insert helpers ─────────────────────────────────────────
 
     def insert(self, table: str, data: dict[str, Any]) -> None:
-        processed = {}
+        processed: dict[str, Any] = {}
         for k, v in data.items():
             if isinstance(v, (list, dict)):
                 processed[k] = json.dumps(v)
@@ -95,13 +96,13 @@ class Database:
                 processed[k] = v
 
         cols = ", ".join(processed.keys())
-        placeholders = ", ".join(f":{k}" for k in processed.keys())
+        placeholders = ", ".join(f":{k}" for k in processed)
         sql = f"INSERT INTO {table} ({cols}) VALUES ({placeholders})"
         self.conn.execute(sql, processed)
         self.conn.commit()
 
     def update(self, table: str, id_value: str, data: dict[str, Any]) -> None:
-        processed = {}
+        processed: dict[str, Any] = {}
         for k, v in data.items():
             if k == "id":
                 continue
@@ -112,7 +113,7 @@ class Database:
             else:
                 processed[k] = v
 
-        sets = ", ".join(f"{k} = :{k}" for k in processed.keys())
+        sets = ", ".join(f"{k} = :{k}" for k in processed)
         processed["_id"] = id_value
         sql = f"UPDATE {table} SET {sets} WHERE id = :_id"
         self.conn.execute(sql, processed)

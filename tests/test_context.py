@@ -3,6 +3,14 @@
 import pytest
 
 from myelin.core.database import Database
+from myelin.core.models import (
+    ActionType,
+    Episode,
+    Procedure,
+    ProcedureStatus,
+    ProcedureStep,
+    StepType,
+)
 from myelin.intelligence.context import ContextAssembler
 from myelin.knowledge.entities import EntityStore
 from myelin.knowledge.graph import KnowledgeGraph
@@ -10,12 +18,7 @@ from myelin.knowledge.temporal import TemporalIndex
 from myelin.memory.episodic import EpisodicMemory
 from myelin.memory.procedural import ProceduralMemory
 from myelin.memory.retriever import MultiSignalRetriever
-from myelin.memory.semantic import SemanticMemory
 from myelin.metacognition.confidence import ConfidenceMap
-from myelin.core.models import (
-    ActionType, Episode, Procedure, ProcedureStatus,
-    ProcedureStep, StepType,
-)
 
 
 @pytest.fixture
@@ -34,9 +37,7 @@ def assembler(db):
     procedural = ProceduralMemory(db)
     confidence = ConfidenceMap(db)
     retriever = MultiSignalRetriever(db, entities, graph, temporal)
-    return ContextAssembler(
-        db, retriever, entities, graph, temporal, procedural, confidence
-    )
+    return ContextAssembler(db, retriever, entities, graph, temporal, procedural, confidence)
 
 
 @pytest.fixture
@@ -50,9 +51,13 @@ def populated(db, assembler):
     confidence = ConfidenceMap(db)
 
     ep = Episode(
-        agent_id="agent1", session_id="s1", action="git pull",
-        action_type=ActionType.TOOL_CALL, content_text="Running git pull origin main",
-        success=True, domain="deployment",
+        agent_id="agent1",
+        session_id="s1",
+        action="git pull",
+        action_type=ActionType.TOOL_CALL,
+        content_text="Running git pull origin main",
+        success=True,
+        domain="deployment",
     )
     episodic.record(ep)
 

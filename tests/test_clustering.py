@@ -78,24 +78,28 @@ class TestEpisodeClusterer:
         episodes = []
         for i, actions in enumerate(sessions):
             for j, action in enumerate(actions):
-                episodes.append({
-                    "id": f"ep_{i}_{j}",
-                    "session_id": f"session_{i}",
-                    "domain": domain,
-                    "action_type": "tool_call",
-                    "action": action,
-                    "content_text": action,
-                    "timestamp": f"2024-01-01T{i:02d}:{j:02d}:00",
-                    "access_times": [],
-                })
+                episodes.append(
+                    {
+                        "id": f"ep_{i}_{j}",
+                        "session_id": f"session_{i}",
+                        "domain": domain,
+                        "action_type": "tool_call",
+                        "action": action,
+                        "content_text": action,
+                        "timestamp": f"2024-01-01T{i:02d}:{j:02d}:00",
+                        "access_times": [],
+                    }
+                )
         return episodes
 
     def test_clusters_similar_sessions(self):
-        episodes = self._make_episodes([
-            ["git pull", "npm test", "npm build"],
-            ["git pull", "npm test", "npm build"],
-            ["docker login", "docker push", "kubectl apply"],
-        ])
+        episodes = self._make_episodes(
+            [
+                ["git pull", "npm test", "npm build"],
+                ["git pull", "npm test", "npm build"],
+                ["docker login", "docker push", "kubectl apply"],
+            ]
+        )
 
         clusterer = EpisodeClusterer(similarity_threshold=0.4, min_cluster_size=2)
         clusters = clusterer.cluster_by_session_sequences(episodes)
@@ -108,10 +112,12 @@ class TestEpisodeClusterer:
                 assert "session_1" in session_ids
 
     def test_min_cluster_size(self):
-        episodes = self._make_episodes([
-            ["unique action 1"],
-            ["unique action 2"],
-        ])
+        episodes = self._make_episodes(
+            [
+                ["unique action 1"],
+                ["unique action 2"],
+            ]
+        )
         clusterer = EpisodeClusterer(similarity_threshold=0.9, min_cluster_size=3)
         clusters = clusterer.cluster_by_session_sequences(episodes)
         assert len(clusters) == 0

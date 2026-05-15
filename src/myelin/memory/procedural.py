@@ -9,7 +9,6 @@ from typing import Any
 from ..core.activation import (
     base_level_activation,
     bayesian_confidence_update,
-    transfer_confidence as compute_transfer_confidence,
 )
 from ..core.database import Database
 from ..core.models import Procedure, ProcedureStatus, PromotionMethod
@@ -24,6 +23,7 @@ class ProceduralMemory:
         data["steps"] = json.dumps([s.model_dump() for s in procedure.steps])
         if data.get("trigger_embedding"):
             from ..core.database import _serialize_f32
+
             data["trigger_embedding"] = _serialize_f32(data["trigger_embedding"])
         self.db.insert("procedures", data)
         return procedure.id
@@ -32,9 +32,17 @@ class ProceduralMemory:
         row = self.db.fetchone("SELECT * FROM procedures WHERE id = ?", (procedure_id,))
         if row:
             row = dict(row)
-            for field in ("steps", "preconditions", "postconditions", "source_episodes",
-                          "component_procedures", "parent_procedures", "transferred_to",
-                          "access_times", "tags"):
+            for field in (
+                "steps",
+                "preconditions",
+                "postconditions",
+                "source_episodes",
+                "component_procedures",
+                "parent_procedures",
+                "transferred_to",
+                "access_times",
+                "tags",
+            ):
                 if isinstance(row.get(field), str):
                     row[field] = json.loads(row[field])
         return row
@@ -51,7 +59,8 @@ class ProceduralMemory:
             "procedures", "procedures_fts", text_query, query_vec, limit=limit * 2
         )
         filtered = [
-            r for r in results
+            r
+            for r in results
             if r.get("confidence", 0) >= min_confidence
             and r.get("status") in (ProcedureStatus.ACTIVE.value, ProcedureStatus.REFLEXIVE.value)
         ]
@@ -78,23 +87,33 @@ class ProceduralMemory:
         total = success_count + failure_count
         actual_rate = success_count / total if total > 0 else None
 
-        self.db.update("procedures", procedure_id, {
-            "confidence": new_confidence,
-            "success_count": success_count,
-            "failure_count": failure_count,
-            "activation_score": new_activation,
-            "access_times": access_times,
-            "actual_success_rate": actual_rate,
-            "predicted_success_rate": new_confidence,
-            "calibration_offset": (new_confidence - actual_rate) if actual_rate is not None else 0.0,
-            "last_executed": time.strftime("%Y-%m-%dT%H:%M:%S"),
-            "updated_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
-        })
+        self.db.update(
+            "procedures",
+            procedure_id,
+            {
+                "confidence": new_confidence,
+                "success_count": success_count,
+                "failure_count": failure_count,
+                "activation_score": new_activation,
+                "access_times": access_times,
+                "actual_success_rate": actual_rate,
+                "predicted_success_rate": new_confidence,
+                "calibration_offset": (new_confidence - actual_rate)
+                if actual_rate is not None
+                else 0.0,
+                "last_executed": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                "updated_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            },
+        )
 
         if new_confidence >= 0.8 and proc["status"] == ProcedureStatus.DRAFT.value:
-            self.db.update("procedures", procedure_id, {
-                "status": ProcedureStatus.ACTIVE.value,
-            })
+            self.db.update(
+                "procedures",
+                procedure_id,
+                {
+                    "status": ProcedureStatus.ACTIVE.value,
+                },
+            )
 
         return new_confidence
 
@@ -103,12 +122,16 @@ class ProceduralMemory:
         proc = self.get(procedure_id)
         if not proc:
             return
-        self.db.update("procedures", procedure_id, {
-            "steps": new_steps,
-            "modify_count": proc["modify_count"] + 1,
-            "version": proc["version"] + 1,
-            "updated_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
-        })
+        self.db.update(
+            "procedures",
+            procedure_id,
+            {
+                "steps": new_steps,
+                "modify_count": proc["modify_count"] + 1,
+                "version": proc["version"] + 1,
+                "updated_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            },
+        )
 
     def get_composable_pairs(self) -> list[tuple[dict, dict]]:
         """Find procedure pairs where A's postconditions match B's preconditions."""
@@ -119,13 +142,21 @@ class ProceduralMemory:
 
         pairs = []
         for a in active:
-            post_a = json.loads(a["postconditions"]) if isinstance(a["postconditions"], str) else a["postconditions"]
+            post_a = (
+                json.loads(a["postconditions"])
+                if isinstance(a["postconditions"], str)
+                else a["postconditions"]
+            )
             if not post_a:
                 continue
             for b in active:
                 if a["id"] == b["id"]:
                     continue
-                pre_b = json.loads(b["preconditions"]) if isinstance(b["preconditions"], str) else b["preconditions"]
+                pre_b = (
+                    json.loads(b["preconditions"])
+                    if isinstance(b["preconditions"], str)
+                    else b["preconditions"]
+                )
                 if not pre_b:
                     continue
                 overlap = set(post_a) & set(pre_b)
@@ -141,7 +172,7 @@ class ProceduralMemory:
         source_agent: str,
     ) -> str:
         """Create a composite (meta) procedure from component procedure IDs."""
-        all_steps = []
+        all_steps: list[dict[str, Any]] = []
         min_confidence = 1.0
         all_preconditions: list[str] = []
         all_postconditions: list[str] = []
@@ -154,13 +185,22 @@ class ProceduralMemory:
             all_steps.extend(steps)
             min_confidence = min(min_confidence, comp["confidence"])
             if i == 0:
-                pre = comp["preconditions"] if isinstance(comp["preconditions"], list) else json.loads(comp["preconditions"])
+                pre = (
+                    comp["preconditions"]
+                    if isinstance(comp["preconditions"], list)
+                    else json.loads(comp["preconditions"])
+                )
                 all_preconditions = pre
             if i == len(components) - 1:
-                post = comp["postconditions"] if isinstance(comp["postconditions"], list) else json.loads(comp["postconditions"])
+                post = (
+                    comp["postconditions"]
+                    if isinstance(comp["postconditions"], list)
+                    else json.loads(comp["postconditions"])
+                )
                 all_postconditions = post
 
         from ..core.models import ProcedureStep
+
         procedure = Procedure(
             name=name,
             trigger_pattern=trigger_pattern,
@@ -185,9 +225,7 @@ class ProceduralMemory:
 
         return procedure.id
 
-    def get_by_domain(
-        self, domain: str, min_confidence: float = 0.0
-    ) -> list[dict[str, Any]]:
+    def get_by_domain(self, domain: str, min_confidence: float = 0.0) -> list[dict[str, Any]]:
         return self.db.fetchall(
             "SELECT * FROM procedures WHERE domain = ? AND confidence >= ? ORDER BY confidence DESC",
             (domain, min_confidence),
@@ -200,10 +238,14 @@ class ProceduralMemory:
         )
 
     def archive(self, procedure_id: str) -> None:
-        self.db.update("procedures", procedure_id, {
-            "status": ProcedureStatus.ARCHIVED.value,
-            "updated_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
-        })
+        self.db.update(
+            "procedures",
+            procedure_id,
+            {
+                "status": ProcedureStatus.ARCHIVED.value,
+                "updated_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            },
+        )
 
     def count(self, status: ProcedureStatus | None = None) -> int:
         if status:

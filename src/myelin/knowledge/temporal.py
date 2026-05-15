@@ -15,7 +15,6 @@ Key capabilities:
 
 from __future__ import annotations
 
-import time
 from datetime import datetime
 from typing import Any
 from uuid import uuid4
@@ -96,9 +95,7 @@ class TemporalIndex:
     ) -> list[dict[str, Any]]:
         """Get the full state history for an entity, newest first."""
         return self.db.fetchall(
-            "SELECT * FROM temporal_states "
-            "WHERE entity_id = ? "
-            "ORDER BY valid_from DESC LIMIT ?",
+            "SELECT * FROM temporal_states WHERE entity_id = ? ORDER BY valid_from DESC LIMIT ?",
             (entity_id, limit),
         )
 
@@ -113,12 +110,14 @@ class TemporalIndex:
 
         transitions = []
         for i in range(len(history) - 1):
-            transitions.append({
-                "from_state": history[i + 1]["state_description"],
-                "to_state": history[i]["state_description"],
-                "changed_at": history[i]["valid_from"],
-                "confidence": history[i]["confidence"],
-            })
+            transitions.append(
+                {
+                    "from_state": history[i + 1]["state_description"],
+                    "to_state": history[i]["state_description"],
+                    "changed_at": history[i]["valid_from"],
+                    "confidence": history[i]["confidence"],
+                }
+            )
         return transitions
 
     def get_current_states_for_domain(
@@ -145,6 +144,7 @@ class TemporalIndex:
         """Get state changes within the last N hours."""
         cutoff = datetime.utcnow()
         from datetime import timedelta
+
         cutoff_iso = (cutoff - timedelta(hours=hours)).isoformat()
 
         if domain:
@@ -178,7 +178,7 @@ class TemporalIndex:
         - Validity: currently valid states get a boost
         - Confidence: higher confidence scores higher
         """
-        confidence = state.get("confidence", 0.5)
+        confidence = float(state.get("confidence", 0.5))
 
         is_current = state.get("valid_until") is None
         currency_boost = 0.3 if is_current else 0.0
@@ -190,8 +190,8 @@ class TemporalIndex:
         except (ValueError, KeyError):
             recency = 0.5
 
-        return confidence * 0.4 + recency * 0.3 + currency_boost
+        return float(confidence * 0.4 + recency * 0.3 + currency_boost)
 
     def count(self) -> int:
         row = self.db.fetchone("SELECT COUNT(*) as cnt FROM temporal_states")
-        return row["cnt"] if row else 0
+        return int(row["cnt"]) if row else 0

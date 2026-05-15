@@ -18,7 +18,13 @@ from uuid import uuid4
 
 from ..core.activation import transfer_confidence
 from ..core.database import Database
-from ..core.models import Procedure, ProcedureStatus, ProcedureStep, StepType
+from ..core.models import (
+    Procedure,
+    ProcedureStatus,
+    ProcedureStep,
+    PromotionMethod,
+    StepType,
+)
 from ..memory.procedural import ProceduralMemory
 from .profiling import AgentProfiler
 
@@ -56,9 +62,7 @@ class TransferProtocol:
         if isinstance(steps, str):
             steps = json.loads(steps)
 
-        adapted_steps, adaptation_notes = self._adapt_steps(
-            steps, source_profile, target_profile
-        )
+        adapted_steps, adaptation_notes = self._adapt_steps(steps, source_profile, target_profile)
 
         package = {
             "transfer_id": uuid4().hex[:16],
@@ -103,7 +107,9 @@ class TransferProtocol:
                 ProcedureStep(
                     order=i,
                     description=s.get("description", s) if isinstance(s, dict) else str(s),
-                    step_type=StepType(s.get("type", "core")) if isinstance(s, dict) else StepType.CORE,
+                    step_type=StepType(s.get("type", "core"))
+                    if isinstance(s, dict)
+                    else StepType.CORE,
                     variants=s.get("variants", []) if isinstance(s, dict) else [],
                     condition=s.get("condition") if isinstance(s, dict) else None,
                 )
@@ -113,7 +119,7 @@ class TransferProtocol:
             postconditions=package.get("postconditions", []),
             confidence=package.get("transfer_confidence", 0.3),
             source_agent=agent_id,
-            promotion_method="transferred",
+            promotion_method=PromotionMethod.TRANSFERRED,
             status=ProcedureStatus.DRAFT,
             domain=package.get("domain"),
             source_episodes=[],
@@ -156,8 +162,7 @@ class TransferProtocol:
 
         already_transferred = set()
         transfers = self.db.fetchall(
-            "SELECT procedure_id FROM transfer_log "
-            "WHERE source_agent = ? AND target_agent = ?",
+            "SELECT procedure_id FROM transfer_log WHERE source_agent = ? AND target_agent = ?",
             (source_agent, target_agent),
         )
         for t in transfers:
@@ -171,22 +176,22 @@ class TransferProtocol:
                 continue
 
             t_conf = transfer_confidence(proc["confidence"], similarity)
-            results.append({
-                "procedure_id": proc["id"],
-                "name": proc["name"],
-                "domain": proc.get("domain"),
-                "source_confidence": proc["confidence"],
-                "transfer_confidence": t_conf,
-                "agent_similarity": similarity,
-            })
+            results.append(
+                {
+                    "procedure_id": proc["id"],
+                    "name": proc["name"],
+                    "domain": proc.get("domain"),
+                    "source_confidence": proc["confidence"],
+                    "transfer_confidence": t_conf,
+                    "agent_similarity": similarity,
+                }
+            )
             if len(results) >= limit:
                 break
 
         return results
 
-    def get_transfer_history(
-        self, agent_id: str, direction: str = "both"
-    ) -> list[dict[str, Any]]:
+    def get_transfer_history(self, agent_id: str, direction: str = "both") -> list[dict[str, Any]]:
         """Get transfer history for an agent.
 
         direction: 'sent', 'received', or 'both'
@@ -225,7 +230,9 @@ class TransferProtocol:
         Returns (adapted_steps, adaptation_notes).
         """
         if not target_profile:
-            return steps, ["No target profile available, using original steps"]
+            return [_normalize_step(step) for step in steps], [
+                "No target profile available, using original steps"
+            ]
 
         target_tools = set()
         tools_raw = target_profile.get("tools", "[]")
@@ -235,7 +242,9 @@ class TransferProtocol:
             target_tools = set(tools_raw)
 
         if not target_tools:
-            return steps, ["Target agent tools unknown, using original steps"]
+            return [_normalize_step(step) for step in steps], [
+                "Target agent tools unknown, using original steps"
+            ]
 
         adapted = []
         notes = []
@@ -270,18 +279,19 @@ class TransferProtocol:
 def _extract_tool_references(text: str) -> set[str]:
     """Extract tool/command references from step description."""
     import re
+
     tools = set()
     patterns = [
-        r'\b(git\s+\w+)',
-        r'\b(npm\s+\w+)',
-        r'\b(docker\s+\w+)',
-        r'\b(kubectl\s+\w+)',
-        r'\b(pip\s+\w+)',
-        r'\b(cargo\s+\w+)',
-        r'\b(make\b)',
-        r'\b(pytest\b)',
-        r'\b(curl\b)',
-        r'\b(wget\b)',
+        r"\b(git\s+\w+)",
+        r"\b(npm\s+\w+)",
+        r"\b(docker\s+\w+)",
+        r"\b(kubectl\s+\w+)",
+        r"\b(pip\s+\w+)",
+        r"\b(cargo\s+\w+)",
+        r"\b(make\b)",
+        r"\b(pytest\b)",
+        r"\b(curl\b)",
+        r"\b(wget\b)",
     ]
     for pat in patterns:
         for match in re.finditer(pat, text, re.IGNORECASE):
@@ -289,12 +299,19 @@ def _extract_tool_references(text: str) -> set[str]:
     return tools
 
 
-def _parse_json(value: Any) -> list:
+def _normalize_step(step: dict | str) -> dict[str, Any]:
+    if isinstance(step, str):
+        return {"description": step, "type": "core"}
+    return dict(step)
+
+
+def _parse_json(value: Any) -> list[Any]:
     if isinstance(value, list):
-        return value
+        return list(value)
     if isinstance(value, str):
         try:
-            return json.loads(value)
+            parsed = json.loads(value)
+            return list(parsed) if isinstance(parsed, list) else []
         except (json.JSONDecodeError, TypeError):
             return []
     return []

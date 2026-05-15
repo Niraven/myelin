@@ -40,12 +40,16 @@ TOOL_PATTERNS = [
     re.compile(r"\b(postgres(?:ql)?|mysql|redis|mongodb|sqlite)\b", re.IGNORECASE),
 ]
 
-FILE_PATTERN = re.compile(r"(?:^|\s)([\w./\-]+\.(?:py|js|ts|tsx|jsx|rs|go|java|yml|yaml|json|toml|md|sql|sh|css|html))\b")
+FILE_PATTERN = re.compile(
+    r"(?:^|\s)([\w./\-]+\.(?:py|js|ts|tsx|jsx|rs|go|java|yml|yaml|json|toml|md|sql|sh|css|html))\b"
+)
 
 SERVICE_PATTERNS = [
     re.compile(r"\b((?:AWS|GCP|Azure)\s*\w*)\b"),
     re.compile(r"\b(S3|EC2|Lambda|ECS|RDS|DynamoDB|CloudFront|SQS|SNS)\b"),
-    re.compile(r"\b(Slack|GitHub|GitLab|Jira|Linear|Vercel|Netlify|Heroku|Railway)\b", re.IGNORECASE),
+    re.compile(
+        r"\b(Slack|GitHub|GitLab|Jira|Linear|Vercel|Netlify|Heroku|Railway)\b", re.IGNORECASE
+    ),
 ]
 
 ERROR_PATTERN = re.compile(r"\b(\w*Error|\w*Exception|\w*Fault|ENOENT|EACCES|ENOMEM|SIGKILL|OOM)\b")
@@ -73,22 +77,26 @@ def extract_entities_from_text(
             raw = match.group(1).strip()
             canonical = _canonicalize(raw, "tool")
             if canonical and canonical not in seen_canonicals:
-                entities.append({
-                    "name": raw,
-                    "entity_type": EntityType.TOOL.value,
-                    "canonical_name": canonical,
-                })
+                entities.append(
+                    {
+                        "name": raw,
+                        "entity_type": EntityType.TOOL.value,
+                        "canonical_name": canonical,
+                    }
+                )
                 seen_canonicals.add(canonical)
 
     for match in FILE_PATTERN.finditer(combined):
         raw = match.group(1).strip()
         canonical = _canonicalize(raw, "file")
         if canonical and canonical not in seen_canonicals:
-            entities.append({
-                "name": raw,
-                "entity_type": EntityType.FILE.value,
-                "canonical_name": canonical,
-            })
+            entities.append(
+                {
+                    "name": raw,
+                    "entity_type": EntityType.FILE.value,
+                    "canonical_name": canonical,
+                }
+            )
             seen_canonicals.add(canonical)
 
     for pattern in SERVICE_PATTERNS:
@@ -96,22 +104,26 @@ def extract_entities_from_text(
             raw = match.group(1).strip()
             canonical = _canonicalize(raw, "service")
             if canonical and canonical not in seen_canonicals:
-                entities.append({
-                    "name": raw,
-                    "entity_type": EntityType.SERVICE.value,
-                    "canonical_name": canonical,
-                })
+                entities.append(
+                    {
+                        "name": raw,
+                        "entity_type": EntityType.SERVICE.value,
+                        "canonical_name": canonical,
+                    }
+                )
                 seen_canonicals.add(canonical)
 
     for match in ERROR_PATTERN.finditer(combined):
         raw = match.group(1).strip()
         canonical = _canonicalize(raw, "error")
         if canonical and canonical not in seen_canonicals:
-            entities.append({
-                "name": raw,
-                "entity_type": EntityType.ERROR.value,
-                "canonical_name": canonical,
-            })
+            entities.append(
+                {
+                    "name": raw,
+                    "entity_type": EntityType.ERROR.value,
+                    "canonical_name": canonical,
+                }
+            )
             seen_canonicals.add(canonical)
 
     return entities
@@ -125,11 +137,7 @@ def _canonicalize(name: str, entity_type: str) -> str:
 
     if entity_type == "tool":
         return name.lower().strip()
-    elif entity_type == "file":
-        return name.strip()
-    elif entity_type == "service":
-        return name.strip()
-    elif entity_type == "error":
+    elif entity_type == "file" or entity_type == "service" or entity_type == "error":
         return name.strip()
     return name.lower().strip()
 
@@ -144,13 +152,11 @@ def extract_relations_from_sequence(
     If two entities always co-occur, infer A -> related_to -> B.
     """
     relations: list[dict[str, Any]] = []
-    entity_sequences: dict[str, list[list[str]]] = defaultdict(list)
-
     sessions: dict[str, list[dict]] = defaultdict(list)
     for ep in episodes:
         sessions[ep.get("session_id", "unknown")].append(ep)
 
-    for sid, session_eps in sessions.items():
+    for _sid, session_eps in sessions.items():
         session_eps.sort(key=lambda e: e.get("timestamp", ""))
         session_entities: list[str] = []
 
@@ -166,7 +172,7 @@ def extract_relations_from_sequence(
     co_occurrence: Counter[tuple[str, str]] = Counter()
     sequence_pairs: Counter[tuple[str, str]] = Counter()
 
-    for sid, session_eps in sessions.items():
+    for _sid, session_eps in sessions.items():
         session_eps.sort(key=lambda e: e.get("timestamp", ""))
         prev_entities: set[str] = set()
 
@@ -191,21 +197,25 @@ def extract_relations_from_sequence(
 
     for (a, b), count in sequence_pairs.items():
         if count >= 2:
-            relations.append({
-                "source": a,
-                "target": b,
-                "relation_type": "triggers",
-                "evidence_count": count,
-            })
+            relations.append(
+                {
+                    "source": a,
+                    "target": b,
+                    "relation_type": "triggers",
+                    "evidence_count": count,
+                }
+            )
 
     for (a, b), count in co_occurrence.items():
         if count >= 3:
-            relations.append({
-                "source": a,
-                "target": b,
-                "relation_type": "related_to",
-                "evidence_count": count,
-            })
+            relations.append(
+                {
+                    "source": a,
+                    "target": b,
+                    "relation_type": "related_to",
+                    "evidence_count": count,
+                }
+            )
 
     return relations
 
@@ -233,16 +243,21 @@ class EntityStore:
         )
 
         if existing:
-            entity_id = existing["id"]
+            entity_id = str(existing["id"])
             import json
+
             episodes = json.loads(existing["source_episodes"] or "[]")
             if episode_id and episode_id not in episodes:
                 episodes.append(episode_id)
-            self.db.update("entities", entity_id, {
-                "mention_count": existing["mention_count"] + 1,
-                "last_seen": time.strftime("%Y-%m-%dT%H:%M:%S"),
-                "source_episodes": episodes,
-            })
+            self.db.update(
+                "entities",
+                entity_id,
+                {
+                    "mention_count": existing["mention_count"] + 1,
+                    "last_seen": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                    "source_episodes": episodes,
+                },
+            )
             return entity_id
 
         entity_id = _new_id()

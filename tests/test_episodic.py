@@ -1,7 +1,5 @@
 """Test episodic memory operations."""
 
-import time
-
 from myelin.core.models import ActionType, Episode
 
 
@@ -61,14 +59,18 @@ def test_access_updates_activation(episodic):
 
 def test_fts_search(episodic):
     ep1 = Episode(
-        agent_id="a", session_id="s1",
-        action="npm test", action_type=ActionType.TOOL_CALL,
+        agent_id="a",
+        session_id="s1",
+        action="npm test",
+        action_type=ActionType.TOOL_CALL,
         content_text="Running npm test suite for the project",
         domain="testing",
     )
     ep2 = Episode(
-        agent_id="a", session_id="s1",
-        action="git push", action_type=ActionType.TOOL_CALL,
+        agent_id="a",
+        session_id="s1",
+        action="git push",
+        action_type=ActionType.TOOL_CALL,
         content_text="Pushing code to remote repository",
         domain="deployment",
     )
@@ -83,15 +85,19 @@ def test_fts_search(episodic):
 def test_get_by_session(episodic):
     for i in range(3):
         ep = Episode(
-            agent_id="a", session_id="target-session",
-            action=f"action_{i}", action_type=ActionType.TOOL_CALL,
+            agent_id="a",
+            session_id="target-session",
+            action=f"action_{i}",
+            action_type=ActionType.TOOL_CALL,
             content_text=f"Content {i}",
         )
         episodic.record(ep)
 
     ep_other = Episode(
-        agent_id="a", session_id="other-session",
-        action="other", action_type=ActionType.TOOL_CALL,
+        agent_id="a",
+        session_id="other-session",
+        action="other",
+        action_type=ActionType.TOOL_CALL,
         content_text="Other session",
     )
     episodic.record(ep_other)
@@ -104,8 +110,10 @@ def test_mark_consolidated(episodic):
     ids = []
     for i in range(3):
         ep = Episode(
-            agent_id="a", session_id="s1",
-            action=f"action_{i}", action_type=ActionType.TOOL_CALL,
+            agent_id="a",
+            session_id="s1",
+            action=f"action_{i}",
+            action_type=ActionType.TOOL_CALL,
             content_text=f"Content {i}",
         )
         episodic.record(ep)
@@ -122,8 +130,10 @@ def test_mark_consolidated(episodic):
 def test_get_unconsolidated(episodic):
     for i in range(3):
         ep = Episode(
-            agent_id="a", session_id="s1",
-            action=f"action_{i}", action_type=ActionType.TOOL_CALL,
+            agent_id="a",
+            session_id="s1",
+            action=f"action_{i}",
+            action_type=ActionType.TOOL_CALL,
             content_text=f"Content {i}",
         )
         episodic.record(ep)

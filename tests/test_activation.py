@@ -1,7 +1,8 @@
 """Test ACT-R activation math and Bayesian confidence."""
 
-import math
 import time
+
+import pytest
 
 from myelin.core.activation import (
     agent_similarity,
@@ -38,9 +39,7 @@ class TestBaseActivation:
 
     def test_recency_and_frequency_combined(self):
         now = time.time()
-        recent_frequent = base_level_activation(
-            [now - 10, now - 20, now - 30, now - 40], now=now
-        )
+        recent_frequent = base_level_activation([now - 10, now - 20, now - 30, now - 40], now=now)
         old_frequent = base_level_activation(
             [now - 10000, now - 20000, now - 30000, now - 40000], now=now
         )
@@ -140,9 +139,12 @@ class TestAgentSimilarity:
 
     def test_completely_different(self):
         score = agent_similarity(
-            {"bash"}, {"web_browse"},
-            "mcp_stdio", "custom",
-            "claude", "gpt",
+            {"bash"},
+            {"web_browse"},
+            "mcp_stdio",
+            "custom",
+            "claude",
+            "gpt",
         )
         assert score < 0.5
 
@@ -150,8 +152,10 @@ class TestAgentSimilarity:
         score = agent_similarity(
             {"bash", "file_edit", "web_search"},
             {"bash", "file_edit", "code_review"},
-            "mcp_stdio", "mcp_sse",
-            "claude", "claude",
+            "mcp_stdio",
+            "mcp_sse",
+            "claude",
+            "claude",
         )
         assert 0.5 < score < 1.0
 
@@ -166,6 +170,3 @@ class TestTransferConfidence:
 
     def test_zero_similarity(self):
         assert transfer_confidence(0.9, 0.0) == 0.0
-
-
-import pytest

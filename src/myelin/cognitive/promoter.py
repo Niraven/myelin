@@ -16,11 +16,10 @@ Pipeline:
 from __future__ import annotations
 
 import json
-import time
 from collections import defaultdict
 from typing import Any
 
-from ..core.activation import base_level_activation, should_promote
+from ..core.activation import base_level_activation
 from ..core.database import Database
 from ..core.models import (
     Procedure,
@@ -63,8 +62,11 @@ class Promoter(CognitiveProcess):
 
     async def execute(self) -> dict[str, Any]:
         """Full Phase 1 promotion pipeline."""
-        # 1. Get all episodes (unconsolidated first, but also check clusters)
+        # 1. Get unconsolidated episodes first; after session-end consolidation,
+        # fall back to recent history so procedure promotion still has evidence.
         all_episodes = self.episodic.get_unconsolidated(limit=500)
+        if len(all_episodes) < MIN_SESSIONS:
+            all_episodes = list(reversed(self.episodic.get_recent(limit=500)))
         if len(all_episodes) < MIN_SESSIONS:
             return {"processed": 0, "created": 0, "reason": "not enough episodes"}
 
@@ -95,8 +97,7 @@ class Promoter(CognitiveProcess):
                 continue
 
             sequences = [
-                [ep.get("action", "") for ep in session_eps]
-                for session_eps in sessions.values()
+                [ep.get("action", "") for ep in session_eps] for session_eps in sessions.values()
             ]
 
             # Skip if already have a procedure from similar episodes
@@ -131,9 +132,7 @@ class Promoter(CognitiveProcess):
 
         return {"processed": processed, "created": created}
 
-    def _group_by_session(
-        self, episodes: list[dict[str, Any]]
-    ) -> dict[str, list[dict[str, Any]]]:
+    def _group_by_session(self, episodes: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
         sessions: dict[str, list[dict]] = defaultdict(list)
         for ep in episodes:
             sessions[ep.get("session_id", "unknown")].append(ep)
@@ -146,7 +145,7 @@ class Promoter(CognitiveProcess):
         for eid in episode_ids[:5]:
             existing = self.db.fetchone(
                 "SELECT id FROM procedures WHERE source_episodes LIKE ?",
-                (f'%{eid}%',),
+                (f"%{eid}%",),
             )
             if existing:
                 return True
@@ -187,9 +186,17 @@ class Promoter(CognitiveProcess):
 
         core_steps = [s for s in steps if s.step_type == StepType.CORE]
         name_parts = [s.description[:30] for s in core_steps[:3]]
-        name = f"auto_{'_'.join(w.split()[0].lower() for w in name_parts)}" if name_parts else f"auto_{domain or 'workflow'}"
+        name = (
+            f"auto_{'_'.join(w.split()[0].lower() for w in name_parts)}"
+            if name_parts
+            else f"auto_{domain or 'workflow'}"
+        )
 
-        trigger = f"When performing tasks involving: {', '.join(s.description[:50] for s in core_steps[:3])}"
+        workflow_label = f"{domain} workflow" if domain else "tasks"
+        trigger = (
+            f"When performing {workflow_label} involving: "
+            f"{', '.join(s.description[:50] for s in core_steps[:3])}"
+        )
 
         return Procedure(
             name=name,
@@ -208,5 +215,5 @@ class Promoter(CognitiveProcess):
             source_agent=agent_id,
             source_episodes=[ep["id"] for ep in episodes],
             domain=domain,
-            status=ProcedureStatus.DRAFT,
+            status=ProcedureStatus.ACTIVE if n_sessions >= 3 else ProcedureStatus.DRAFT,
         )

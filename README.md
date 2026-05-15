@@ -1,6 +1,8 @@
 # Myelin
 
-A cognitive memory layer for AI agents. Learns procedures from behavior, builds knowledge graphs from observations, and transfers knowledge across agents via MCP.
+**mem0 remembers. Myelin learns.**
+
+Myelin is a cognitive memory layer for AI agents that learns procedures from behavior, builds knowledge graphs from observations, and transfers knowledge across agents via MCP.
 
 Named after the biological myelin sheath that accelerates neural signal transmission, Myelin accelerates AI agents by giving them persistent, structured memory that improves with use.
 
@@ -13,6 +15,28 @@ Most agent memory systems store and retrieve text. Myelin does more:
 - **Tracks temporal state.** Knows that Redis was healthy 2 hours ago but is degraded now. Maintains full state transition history for every entity.
 - **Assembles context, not just search results.** When an agent needs to act, Myelin combines relevant memories, matching procedures, entity relationships, temporal state, and domain confidence into a single structured context block.
 - **Transfers knowledge between agents.** Packages procedures with capability-aware adaptation so knowledge learned by one agent can be used by another, even with different toolsets.
+
+## Proof Demo
+
+Run the demo to watch Myelin observe five repeated deployment workflows, promote the shared sequence into a learned procedure, execute it, and update confidence from success feedback.
+
+```bash
+uv run --python /Users/niamamor/.local/bin/python3.11 --with-editable ".[dev]" \
+  python examples/procedure_learning_demo.py
+```
+
+Expected shape:
+
+```text
+Myelin procedure-learning demo
+Episodes observed: 25
+Procedures created: 1
+Learned procedure: auto_git_npm_docker
+Initial confidence: 50%
+Confidence after success feedback: 57%
+```
+
+This is the core product claim: repeated behavior becomes an executable procedure without an LLM call.
 
 ## Architecture
 
@@ -132,18 +156,18 @@ results = await session.end()
 
 ## What Makes Myelin Different
 
-| Feature | Myelin | mem0 | Zep | LangMem |
-|---------|--------|------|-----|---------|
-| Procedural memory | Yes (auto-learned) | No | No | No |
-| Knowledge graph | Yes (evidence-weighted) | Yes (basic) | Yes | No |
-| Temporal reasoning | Yes (state transitions) | No | Yes (basic) | No |
-| Cognitive processes | 7 (consolidation, reflection, etc.) | No | No | No |
-| Cross-agent transfer | Yes (capability-aware) | No | No | No |
-| Context assembly | Yes (multi-signal) | No | No | No |
-| Bayesian confidence | Yes (with calibration) | No | No | No |
-| Sequence alignment | Yes (ClustalW-inspired) | No | No | No |
-| LLM dependency | Optional (embeddings only) | Required | Required | Required |
-| Local-first | Yes (SQLite) | Cloud | Cloud/Self-host | Framework |
+Most memory systems are built around recall: store facts, retrieve relevant text, and feed it back into context. Myelin is built around learning reusable agent behavior.
+
+| Capability | Myelin approach |
+|------------|-----------------|
+| Procedure learning | Clusters repeated action sequences and extracts consensus workflows |
+| Determinism | Core learning uses local algorithms instead of LLM-only extraction |
+| Context assembly | Combines memories, procedures, entities, temporal state, and confidence |
+| Confidence | Updates procedures with Bayesian feedback after execution |
+| Transfer | Adapts procedures across agents with different tool capabilities |
+| Deployment | Local-first SQLite with optional embeddings |
+
+Systems like mem0 and Supermemory are strong references for fact recall and retrieval. Myelin is aimed at the next layer: letting agents learn how work gets done.
 
 ## How Promotion Works
 

@@ -28,21 +28,29 @@ class CognitiveProcess(ABC):
 
         try:
             result = await self.execute()
-            self.db.update("process_runs", run.id, {
-                "completed_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
-                "status": "completed",
-                "items_processed": result.get("processed", 0),
-                "items_created": result.get("created", 0),
-                "items_modified": result.get("modified", 0),
-                "details": result,
-            })
+            self.db.update(
+                "process_runs",
+                run.id,
+                {
+                    "completed_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                    "status": "completed",
+                    "items_processed": result.get("processed", 0),
+                    "items_created": result.get("created", 0),
+                    "items_modified": result.get("modified", 0),
+                    "details": result,
+                },
+            )
             return result
         except Exception as e:
-            self.db.update("process_runs", run.id, {
-                "completed_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
-                "status": "failed",
-                "error": str(e),
-            })
+            self.db.update(
+                "process_runs",
+                run.id,
+                {
+                    "completed_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                    "status": "failed",
+                    "error": str(e),
+                },
+            )
             raise
 
     @abstractmethod

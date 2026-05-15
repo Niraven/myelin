@@ -10,8 +10,6 @@ Phase 1 uses hierarchical agglomerative clustering with multiple signals.
 
 from __future__ import annotations
 
-import json
-import math
 from collections import defaultdict
 from typing import Any
 
@@ -89,10 +87,12 @@ def episode_similarity(
     if emb_a and emb_b:
         if isinstance(emb_a, bytes):
             import struct
+
             dim = len(emb_a) // 4
             emb_a = list(struct.unpack(f"{dim}f", emb_a))
         if isinstance(emb_b, bytes):
             import struct
+
             dim = len(emb_b) // 4
             emb_b = list(struct.unpack(f"{dim}f", emb_b))
         scores["embedding"] = cosine_similarity(emb_a, emb_b)
@@ -132,8 +132,6 @@ class EpisodeClusterer:
         if len(episodes) < self.min_cluster_size:
             return []
 
-        n = len(episodes)
-
         # Pre-group by domain for efficiency
         domain_groups: dict[str, list[int]] = defaultdict(list)
         for i, ep in enumerate(episodes):
@@ -143,7 +141,7 @@ class EpisodeClusterer:
         all_clusters: list[list[dict]] = []
 
         # Cluster within each domain group
-        for domain, indices in domain_groups.items():
+        for _domain, indices in domain_groups.items():
             if len(indices) < self.min_cluster_size:
                 continue
 
@@ -153,9 +151,7 @@ class EpisodeClusterer:
 
         return all_clusters
 
-    def _agglomerative_cluster(
-        self, episodes: list[dict[str, Any]]
-    ) -> list[list[dict[str, Any]]]:
+    def _agglomerative_cluster(self, episodes: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
         """Average-linkage agglomerative clustering."""
         n = len(episodes)
         if n < self.min_cluster_size:
@@ -180,7 +176,7 @@ class EpisodeClusterer:
 
             active_list = sorted(active)
             for idx_i, ci in enumerate(active_list):
-                for cj in active_list[idx_i + 1:]:
+                for cj in active_list[idx_i + 1 :]:
                     # Average linkage
                     total_sim = 0.0
                     count = 0
@@ -259,7 +255,7 @@ class EpisodeClusterer:
             active_list = sorted(active)
 
             for idx_i, ci in enumerate(active_list):
-                for cj in active_list[idx_i + 1:]:
+                for cj in active_list[idx_i + 1 :]:
                     total_sim = 0.0
                     count = 0
                     for si in clusters[ci]:

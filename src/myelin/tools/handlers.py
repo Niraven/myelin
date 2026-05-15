@@ -8,12 +8,12 @@ from typing import Any
 
 from ..core.models import (
     ActionType,
-    AgentProfile,
     Episode,
     GoalStatus,
     Procedure,
     ProcedureStatus,
     ProcedureStep,
+    PromotionMethod,
     StepType,
 )
 from ..intelligence.context import ContextAssembler
@@ -64,8 +64,14 @@ class ToolHandlers:
         self.profiler = agent_profiler or AgentProfiler(self.db)
         self.transfer = transfer_protocol or TransferProtocol(self.db, self.procedural)
         self.assembler = context_assembler or ContextAssembler(
-            self.db, self.retriever, self.entities, self.graph,
-            self.temporal, self.procedural, self.confidence_map, self.embedder,
+            self.db,
+            self.retriever,
+            self.entities,
+            self.graph,
+            self.temporal,
+            self.procedural,
+            self.confidence_map,
+            self.embedder,
         )
 
     # ── 1. myelin_observe ─────────────────────────────────────
@@ -144,9 +150,7 @@ class ToolHandlers:
             nodes = self.semantic.search_hybrid(query, query_vec, limit=limit)
             for node in nodes:
                 self.semantic.access(node["id"])
-            results["semantic"] = [
-                n for n in nodes if n.get("confidence", 0) >= min_confidence
-            ]
+            results["semantic"] = [n for n in nodes if n.get("confidence", 0) >= min_confidence]
 
         if "procedural" in types:
             procedures = self.procedural.find_matching(
@@ -259,9 +263,7 @@ class ToolHandlers:
                 }
 
         if domain:
-            row = self.db.fetchone(
-                "SELECT * FROM confidence_map WHERE domain = ?", (domain,)
-            )
+            row = self.db.fetchone("SELECT * FROM confidence_map WHERE domain = ?", (domain,))
             if row:
                 result["domain"] = dict(row)
 
@@ -312,7 +314,7 @@ class ToolHandlers:
             postconditions=postconditions or [],
             confidence=0.7,
             source_agent=agent_id,
-            promotion_method="taught",
+            promotion_method=PromotionMethod.TAUGHT,
             status=ProcedureStatus.ACTIVE,
             domain=domain,
         )
@@ -340,9 +342,7 @@ class ToolHandlers:
             (GoalStatus.ACTIVE.value,),
         )
 
-        last_run = self.db.fetchone(
-            "SELECT * FROM process_runs ORDER BY started_at DESC LIMIT 1"
-        )
+        last_run = self.db.fetchone("SELECT * FROM process_runs ORDER BY started_at DESC LIMIT 1")
 
         return {
             "episodes": total_episodes,
@@ -372,8 +372,11 @@ class ToolHandlers:
         """Multi-signal retrieval across all memory types."""
         query_vec = self.embedder.embed(query) or None
         results = self.retriever.retrieve(
-            query, query_embedding=query_vec, domain=domain,
-            limit=limit, weights=weights,
+            query,
+            query_embedding=query_vec,
+            domain=domain,
+            limit=limit,
+            weights=weights,
         )
         return {
             "query": query,
@@ -438,8 +441,7 @@ class ToolHandlers:
                 "node_count": len(subgraph["nodes"]),
                 "edge_count": len(subgraph["edges"]),
                 "nodes": [
-                    {"id": n["id"], "name": n.get("canonical_name", "")}
-                    for n in subgraph["nodes"]
+                    {"id": n["id"], "name": n.get("canonical_name", "")} for n in subgraph["nodes"]
                 ],
             },
         }
@@ -488,7 +490,9 @@ class ToolHandlers:
                 "description": current["state_description"],
                 "since": current.get("valid_from"),
                 "confidence": current.get("confidence", 0.5),
-            } if current else None,
+            }
+            if current
+            else None,
             "history": [
                 {
                     "state": h["state_description"],
@@ -593,6 +597,7 @@ class ToolHandlers:
     async def trigger_sleep(self, agent_id: str | None = None) -> dict[str, Any]:
         """Trigger a sleep consolidation cycle manually."""
         from ..cognitive.sleep import SleepCycle
+
         sleep = SleepCycle(self.db)
         result = await sleep.run()
         return {

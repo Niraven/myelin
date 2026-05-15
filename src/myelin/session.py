@@ -47,12 +47,8 @@ class Session:
         self.entity_store = EntityStore(db)
         self.graph = KnowledgeGraph(db)
         self.temporal = TemporalIndex(db)
-        self.retriever = MultiSignalRetriever(
-            db, self.entity_store, self.graph, self.temporal
-        )
-        self.orchestrator = CognitiveOrchestrator(
-            db, self.episodic, self.semantic, self.procedural
-        )
+        self.retriever = MultiSignalRetriever(db, self.entity_store, self.graph, self.temporal)
+        self.orchestrator = CognitiveOrchestrator(db, self.episodic, self.semantic, self.procedural)
 
         self._started_at = time.time()
         self._episode_count = 0
