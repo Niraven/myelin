@@ -22,11 +22,8 @@ import json
 import threading
 import time
 import uuid
-from collections.abc import Generator
-from contextlib import contextmanager
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from pathlib import Path
+from datetime import UTC, datetime
 from queue import Empty, Full, Queue
 from typing import Any, Literal
 
@@ -43,7 +40,7 @@ class ObservationQueueError(Exception):
     """Base exception for ObservationQueue operations."""
 
 
-class SensitivityViolation(ObservationQueueError):
+class SensitivityViolation(ObservationQueueError):  # noqa: N818
     """Raised when an agent tries to observe at a higher sensitivity than allowed."""
 
 
@@ -70,7 +67,7 @@ class Observation:
 
     # Auto-set
     id: str = field(default_factory=lambda: uuid.uuid4().hex)
-    timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    timestamp: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
     def to_row(self) -> dict[str, Any]:
         """Serialize to a database row dict."""

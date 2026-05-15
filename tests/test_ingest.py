@@ -1,10 +1,7 @@
 """Tests for ObservationQueue — multi-agent ingest with backpressure and ACL."""
 
 import json
-import threading
-import time
 from pathlib import Path
-from queue import Full
 
 import pytest
 
