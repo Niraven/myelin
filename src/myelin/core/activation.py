@@ -62,6 +62,51 @@ def bayesian_confidence_update(
     return max(0.0, min(1.0, new))
 
 
+def initial_procedure_confidence(
+    session_count: int,
+    core_step_count: int,
+    variant_step_count: int = 0,
+) -> float:
+    """Estimate starting confidence for an auto-promoted procedure.
+
+    Repeated independent sessions and stable core steps should not surface as
+    coin-flip guidance. Variant-heavy procedures get a small penalty because
+    they need human review.
+    """
+    session_score = min(session_count, 5) * 0.04
+    core_score = min(core_step_count, 5) * 0.02
+    variant_penalty = min(variant_step_count, 4) * 0.02
+    confidence = 0.45 + session_score + core_score - variant_penalty
+    return max(0.5, min(0.75, confidence))
+
+
+def procedure_trust_level(confidence: float, success_count: int = 0, failure_count: int = 0) -> str:
+    """Human-readable trust band for procedure suggestions."""
+    executions = success_count + failure_count
+    if confidence >= 0.85 and success_count >= 3:
+        return "trusted"
+    if confidence >= 0.7 and success_count >= 1:
+        return "validated"
+    if confidence >= 0.6:
+        return "candidate"
+    if executions > 0:
+        return "low_confidence"
+    return "unvalidated"
+
+
+def procedure_recommendation(trust_level: str) -> str:
+    """Action guidance for agents consuming a learned procedure."""
+    if trust_level == "trusted":
+        return "safe_to_use_with_normal_checks"
+    if trust_level == "validated":
+        return "use_with_light_review"
+    if trust_level == "candidate":
+        return "suggest_only_review_before_execution"
+    if trust_level == "low_confidence":
+        return "do_not_execute_without_human_or_agent_review"
+    return "observe_more_runs_before_relying_on_this"
+
+
 def calibration_offset(
     predicted: list[float],
     outcomes: list[bool],

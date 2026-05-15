@@ -184,6 +184,9 @@ class TestProcedureLifecycle:
             agent_id="demo-agent",
         )
         assert execution["found"] is True
+        assert execution["confidence"] >= 0.65
+        assert execution["trust_level"] in {"candidate", "validated", "trusted"}
+        assert execution["recommendation"] == "suggest_only_review_before_execution"
         assert len(execution["steps"]) >= 3
 
 

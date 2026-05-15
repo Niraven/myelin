@@ -19,7 +19,7 @@ import json
 from collections import defaultdict
 from typing import Any
 
-from ..core.activation import base_level_activation
+from ..core.activation import base_level_activation, initial_procedure_confidence
 from ..core.database import Database
 from ..core.models import (
     Procedure,
@@ -185,6 +185,7 @@ class Promoter(CognitiveProcess):
             return None
 
         core_steps = [s for s in steps if s.step_type == StepType.CORE]
+        variant_steps = [s for s in steps if s.step_type == StepType.VARIANT]
         name_parts = [s.description[:30] for s in core_steps[:3]]
         name = (
             f"auto_{'_'.join(w.split()[0].lower() for w in name_parts)}"
@@ -209,7 +210,11 @@ class Promoter(CognitiveProcess):
             ),
             trigger_pattern=trigger,
             steps=steps,
-            confidence=0.5,
+            confidence=initial_procedure_confidence(
+                session_count=n_sessions,
+                core_step_count=len(core_steps),
+                variant_step_count=len(variant_steps),
+            ),
             activation_score=activation,
             access_times=[],
             source_agent=agent_id,

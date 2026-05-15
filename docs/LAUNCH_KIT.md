@@ -4,6 +4,10 @@
 
 Myelin is a local-first procedural memory layer for AI agents: it watches repeated workflows, learns executable procedures, and improves them with feedback.
 
+For orchestrators:
+
+> Hermes operates. Myelin learns the operating procedures.
+
 ## Short Pitch
 
 Most agent memory systems retrieve text. Myelin learns how work gets done. It observes agent actions, clusters repeated workflows, uses ClustalW-inspired sequence alignment to extract procedure steps, and exposes the learned workflow through MCP.
@@ -49,6 +53,8 @@ It watches repeated agent workflows, aligns action sequences with a ClustalW-ins
 Local-first. SQLite. MCP-native. No LLM required for core learning.
 
 Demo: python examples/procedure_learning_demo.py
+
+Hermes demo: python examples/hermes_procedure_demo.py
 ```
 
 ## GitHub Repo Settings

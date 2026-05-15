@@ -57,3 +57,20 @@ Prefer claims that are true from the repository:
 - Procedure learning from repeated workflows.
 - Deterministic sequence-alignment core.
 - Confidence feedback after execution.
+
+## Myelin And Agent Orchestrators
+
+Agent orchestrators such as Hermes, LangGraph, CrewAI, AutoGen, and swarm runners coordinate work. Myelin should sit underneath them as a learning layer.
+
+| Layer | Owns |
+|---|---|
+| Orchestrator | routing, scheduling, tools, approvals, delegation |
+| Myelin | observation, procedure discovery, confidence, recall, transfer |
+
+Public line:
+
+> Orchestrators coordinate agents. Myelin learns from what agents repeatedly do.
+
+For Hermes:
+
+> Hermes operates. Myelin learns the operating procedures.

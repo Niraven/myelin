@@ -6,6 +6,7 @@ import json
 import time
 from typing import Any
 
+from ..core.activation import procedure_recommendation, procedure_trust_level
 from ..core.models import (
     ActionType,
     Episode,
@@ -203,12 +204,19 @@ class ToolHandlers:
 
         best = matches[0]
         steps = best["steps"] if isinstance(best["steps"], list) else json.loads(best["steps"])
+        trust_level = procedure_trust_level(
+            best["confidence"],
+            best.get("success_count", 0),
+            best.get("failure_count", 0),
+        )
 
         return {
             "found": True,
             "procedure_id": best["id"],
             "name": best["name"],
             "confidence": best["confidence"],
+            "trust_level": trust_level,
+            "recommendation": procedure_recommendation(trust_level),
             "calibration_offset": best.get("calibration_offset", 0.0),
             "steps": steps,
             "preconditions": best.get("preconditions", []),
@@ -233,9 +241,22 @@ class ToolHandlers:
             self.procedural.record_modification(procedure_id, modifications)
 
         proc = self.procedural.get(procedure_id)
+        trust_level = (
+            procedure_trust_level(
+                new_confidence,
+                proc["success_count"] if proc else 0,
+                proc["failure_count"] if proc else 0,
+            )
+            if proc
+            else "unknown"
+        )
         return {
             "procedure_id": procedure_id,
             "new_confidence": new_confidence,
+            "trust_level": trust_level,
+            "recommendation": procedure_recommendation(trust_level)
+            if trust_level != "unknown"
+            else "procedure_not_found",
             "success_count": proc["success_count"] if proc else 0,
             "failure_count": proc["failure_count"] if proc else 0,
             "status": proc["status"] if proc else "unknown",
@@ -257,6 +278,11 @@ class ToolHandlers:
                     "id": proc["id"],
                     "name": proc["name"],
                     "confidence": proc["confidence"],
+                    "trust_level": procedure_trust_level(
+                        proc["confidence"],
+                        proc["success_count"],
+                        proc["failure_count"],
+                    ),
                     "actual_success_rate": proc.get("actual_success_rate"),
                     "calibration_offset": proc.get("calibration_offset", 0.0),
                     "executions": proc["success_count"] + proc["failure_count"],

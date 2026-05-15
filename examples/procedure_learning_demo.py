@@ -109,6 +109,8 @@ def main() -> None:
 
     print(f"Learned procedure: {execution['name']}")
     print(f"Initial confidence: {execution['confidence']:.0%}")
+    print(f"Trust level: {execution['trust_level']}")
+    print(f"Recommendation: {execution['recommendation']}")
     print("Steps:")
     for index, step in enumerate(execution["steps"], start=1):
         print(f"  {index}. {step['description']}")
@@ -116,6 +118,7 @@ def main() -> None:
     feedback = result["feedback"]
     if feedback:
         print(f"Confidence after success feedback: {feedback['new_confidence']:.0%}")
+        print(f"Trust after feedback: {feedback['trust_level']}")
 
     print("\nAssembled context:")
     print(result["context"])

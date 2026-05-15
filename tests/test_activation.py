@@ -10,6 +10,9 @@ from myelin.core.activation import (
     bayesian_confidence_update,
     calibration_offset,
     ebbinghaus_decay,
+    initial_procedure_confidence,
+    procedure_recommendation,
+    procedure_trust_level,
     should_promote,
     transfer_confidence,
 )
@@ -96,6 +99,31 @@ class TestBayesianConfidence:
         high_drop = 0.95 - high_conf
         low_drop = 0.3 - low_conf
         assert high_drop > low_drop
+
+
+class TestProcedureTrust:
+    def test_initial_confidence_uses_evidence(self):
+        confidence = initial_procedure_confidence(session_count=5, core_step_count=5)
+        assert confidence == pytest.approx(0.75)
+
+    def test_initial_confidence_penalizes_variants(self):
+        stable = initial_procedure_confidence(session_count=4, core_step_count=4)
+        noisy = initial_procedure_confidence(
+            session_count=4, core_step_count=4, variant_step_count=4
+        )
+        assert noisy < stable
+
+    def test_unexecuted_auto_procedure_is_candidate(self):
+        assert procedure_trust_level(0.65, success_count=0, failure_count=0) == "candidate"
+
+    def test_validated_needs_success_feedback(self):
+        assert procedure_trust_level(0.72, success_count=1, failure_count=0) == "validated"
+
+    def test_trusted_needs_multiple_successes(self):
+        assert procedure_trust_level(0.88, success_count=3, failure_count=0) == "trusted"
+
+    def test_recommendation_maps_to_action(self):
+        assert procedure_recommendation("candidate") == "suggest_only_review_before_execution"
 
 
 class TestCalibration:

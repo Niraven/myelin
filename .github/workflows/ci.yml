@@ -38,6 +38,9 @@ jobs:
       - name: Demo
         run: python examples/procedure_learning_demo.py
 
+      - name: Hermes demo
+        run: python examples/hermes_procedure_demo.py
+
   lint:
     runs-on: ubuntu-latest
     steps:

@@ -18,6 +18,10 @@ Myelin is a cognitive memory layer for AI agents that learns procedures from beh
 
 Named after the biological myelin sheath that accelerates neural signal transmission, Myelin accelerates AI agents by giving them persistent, structured memory that improves with use.
 
+Myelin can learn from single agents, delegated teams, and swarms as long as the orchestrator emits structured observations. It does not replace orchestration.
+
+> Orchestrators coordinate agents. Myelin learns from what agents repeatedly do.
+
 ## Start Here
 
 - Run the proof demo: `python examples/procedure_learning_demo.py`
@@ -26,6 +30,8 @@ Named after the biological myelin sheath that accelerates neural signal transmis
 - Use the brand assets: [docs/BRAND.md](docs/BRAND.md)
 - Understand the lineage: [docs/LINEAGE.md](docs/LINEAGE.md)
 - Compare the category: [docs/COMPARISONS.md](docs/COMPARISONS.md)
+- Wire Hermes: [docs/integrations/hermes.md](docs/integrations/hermes.md)
+- Emit observations: [docs/OBSERVATION_SCHEMA.md](docs/OBSERVATION_SCHEMA.md)
 
 ## Why Myelin
 
@@ -53,11 +59,23 @@ Myelin procedure-learning demo
 Episodes observed: 25
 Procedures created: 1
 Learned procedure: auto_git_npm_docker
-Initial confidence: 50%
-Confidence after success feedback: 57%
+Initial confidence: 75%
+Trust level: candidate
+Recommendation: suggest_only_review_before_execution
+Confidence after success feedback: 79%
+Trust after feedback: validated
 ```
 
 This is the core product claim: repeated behavior becomes an executable procedure without an LLM call.
+
+For orchestrated agent systems, run:
+
+```bash
+uv run --python /Users/niamamor/.local/bin/python3.11 --with-editable ".[dev]" \
+  python examples/hermes_procedure_demo.py
+```
+
+This simulates Hermes coordinating research, build, and release agents across noisy CI-repair runs. Myelin learns the shared workflow while keeping Hermes responsible for routing and approvals.
 
 ## Architecture
 
@@ -210,6 +228,10 @@ Most memory systems are built around recall: store facts, retrieve relevant text
 | Deployment | Local-first SQLite with optional embeddings |
 
 Systems like mem0 and Supermemory are strong references for fact recall and retrieval. Myelin is aimed at the next layer: letting agents learn how work gets done.
+
+For Hermes specifically:
+
+> Hermes operates. Myelin learns the operating procedures.
 
 Myelin is also the focused successor to [Sigil](https://github.com/Niraven/sigil-memory), an earlier broad local-first agent memory prototype. See [docs/LINEAGE.md](docs/LINEAGE.md) for what Myelin absorbed and what it intentionally leaves out.
 
