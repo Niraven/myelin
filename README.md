@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/brand/myelin-wordmark.svg" alt="Myelin: mem0 remembers. Myelin learns." width="760">
+  <img src="assets/brand/social-preview.png" alt="Myelin: mem0 remembers. Myelin learns." width="920">
 </p>
 
 <p align="center">

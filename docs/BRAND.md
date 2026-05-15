@@ -24,6 +24,9 @@ Brand assets:
 - `assets/brand/myelin-wordmark.svg`
 - `assets/brand/social-preview.svg`
 - `assets/brand/social-preview.png`
+- `assets/brand/myelin-greek-social-preview.png`
+
+The README and GitHub social preview should use `assets/brand/social-preview.png`. The SVG files remain useful for scalable logo work, docs, and future package artwork.
 
 ## Palette
 
@@ -43,3 +46,9 @@ Brand assets:
 - Say “procedure learning” more than “memory.”
 - Be explicit about local-first and no LLM requirement for core operations.
 - Avoid benchmark claims unless they are freshly verified.
+
+## Greek-Tech Direction
+
+The stronger visual direction is a Greek-tech sigil: a golden myelin sheath with a subtle ouroboros curve around a teal signal path. It gives the project more character than a plain terminal dashboard while staying connected to the name.
+
+Keep the serpent reference subtle. Myelin should not become a mascot, fantasy snake, or security-brand cliché.

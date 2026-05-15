@@ -65,4 +65,4 @@ Recommended topics:
 ai-agents, mcp, memory, procedural-memory, cognitive-architecture, sqlite, agent-framework, llm-tools
 ```
 
-Use `assets/brand/social-preview.png` for the repository social preview. GitHub repository settings require uploading the image manually.
+Use `assets/brand/social-preview.png` for the repository social preview. It uses the Greek-tech myelin sheath direction and is sized at 1280x640. GitHub repository settings require uploading the image manually.
