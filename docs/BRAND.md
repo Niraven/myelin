@@ -8,11 +8,11 @@ Primary line:
 
 Short description:
 
-> Procedural learning for AI agents.
+> Agents should not relearn workflows.
 
 Long description:
 
-> Myelin watches AI agents work, discovers repeated action patterns, promotes them into executable procedures, and improves confidence with feedback.
+> Myelin watches AI agents work, discovers repeated action patterns, promotes them into reusable procedures, and improves confidence with feedback.
 
 ## Visual Identity
 

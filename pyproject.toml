@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "myelin-memory"
 version = "0.3.0"
-description = "Procedural learning layer for AI agents. Learns reusable workflows from behavior and transfers procedures across agents via MCP."
+description = "Agents should not relearn workflows. Myelin turns repeated agent behavior into reusable procedures via MCP."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"

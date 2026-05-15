@@ -2,7 +2,7 @@
 
 ## One-Liner
 
-Myelin is a local-first procedural learning layer for AI agents: it watches repeated workflows, learns executable procedures, and improves them with feedback.
+Agents should not relearn the same workflow twice. Myelin turns repeated agent behavior into reusable procedures.
 
 For orchestrators:
 
@@ -62,7 +62,7 @@ Hermes demo: python examples/hermes_procedure_demo.py
 Recommended description:
 
 ```text
-Procedural learning for AI agents. MCP-native, local-first, SQLite-backed.
+Agents should not relearn workflows. Myelin turns repeated agent behavior into reusable procedures via MCP.
 ```
 
 Recommended topics:

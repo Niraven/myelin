@@ -14,7 +14,7 @@
   <strong>mem0 remembers. Myelin learns.</strong>
 </p>
 
-Myelin is a procedural learning layer for AI agents. It observes agent behavior, learns reusable workflows, assembles actionable context, and transfers learned procedures across agents via MCP.
+Agents should not relearn the same workflow twice. Myelin observes agent behavior, turns repeated work into reusable procedures, assembles actionable context, and transfers learned workflows across agents via MCP.
 
 Named after the biological myelin sheath that accelerates neural signal transmission, Myelin accelerates AI agents by helping them reuse what worked instead of rediscovering the same workflow every session.
 
