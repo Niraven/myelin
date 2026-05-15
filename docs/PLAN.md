@@ -326,7 +326,28 @@ Myelin should get better at its job over time. No user intervention needed.
 
 **Files:** `cognitive/reflector.py`, `server.py` (log query gaps)
 
-### Phase 4: Product (🚀 The Launchpad)
+### Phase 2.5: Learning OS (✅ Complete — 583 tests)
+
+The deep cognitive upgrade. Transforms Myelin from a memory retriever into a true learning OS. 11,658 lines, 9 new subsystems, 337 new tests (all passing).
+
+| Component | What It Does | Lines | Tests |
+|-----------|-------------|-------|-------|
+| **Reconsolidation Engine** | Prediction-error gated memory updates with lability windows | 921 | 62 |
+| **Prediction Learner** | Forward model + TD-error surprise signal | 373 | 29 |
+| **Two-Phase Sleep** | NREM (Hebbian + downscaling) → REM (dreaming + counterfactuals) | 1,078 | merged |
+| **Prioritized Replay** | Rank-based PER with IS weights + FreshPER staleness | 324 | 25 |
+| **Schema Learner** | Jaccard clustering → schema induction with lifecycle | 465 | 30 |
+| **LLM Consolidator** | Informative episode summaries replacing placeholders | 445 | 16 |
+| **LLM Reflector** | Multi-level insight generation | 541 | 12 |
+| **Curiosity Engine** | Knowledge-gap detection, epsilon-greedy exploration, learning goals | 1,576 | 24 |
+| **FSRS Scheduler** | FSRS-5 spaced repetition for optimal review timing | 409 | 10 |
+| **Self-Model** | Confidence calibration, bias detection, competence map | 425 | 19 |
+
+**Schema V4:** 7 new tables (lability windows, prediction log, schemas, reconsolidation log, etc.)
+
+### Phase 3: Product (✅ Complete)
+
+### Phase 4: Product Launchpad (🚀 The Launchpad)
 
 Making Myelin visible and demosable. This is what gets noticed.
 
