@@ -8,6 +8,8 @@ Myelin is a local-first procedural memory layer for AI agents: it watches repeat
 
 Most agent memory systems retrieve text. Myelin learns how work gets done. It observes agent actions, clusters repeated workflows, uses ClustalW-inspired sequence alignment to extract procedure steps, and exposes the learned workflow through MCP.
 
+Sigil was the broad research prototype. Myelin is the focused product: procedural memory for AI agents.
+
 ## Demo Command
 
 ```bash

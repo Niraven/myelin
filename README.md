@@ -24,6 +24,8 @@ Named after the biological myelin sheath that accelerates neural signal transmis
 - Read the launch plan: [docs/LAUNCH_PLAN.md](docs/LAUNCH_PLAN.md)
 - Use the launch copy: [docs/LAUNCH_KIT.md](docs/LAUNCH_KIT.md)
 - Use the brand assets: [docs/BRAND.md](docs/BRAND.md)
+- Understand the lineage: [docs/LINEAGE.md](docs/LINEAGE.md)
+- Compare the category: [docs/COMPARISONS.md](docs/COMPARISONS.md)
 
 ## Why Myelin
 
@@ -208,6 +210,8 @@ Most memory systems are built around recall: store facts, retrieve relevant text
 | Deployment | Local-first SQLite with optional embeddings |
 
 Systems like mem0 and Supermemory are strong references for fact recall and retrieval. Myelin is aimed at the next layer: letting agents learn how work gets done.
+
+Myelin is also the focused successor to [Sigil](https://github.com/Niraven/sigil-memory), an earlier broad local-first agent memory prototype. See [docs/LINEAGE.md](docs/LINEAGE.md) for what Myelin absorbed and what it intentionally leaves out.
 
 ## How Promotion Works
 
