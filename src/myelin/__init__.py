@@ -1,3 +1,3 @@
-"""Myelin: Cognitive memory layer for AI agents."""
+"""Myelin: procedural learning for AI agents."""
 
 __version__ = "0.1.0"

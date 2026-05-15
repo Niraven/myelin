@@ -5,14 +5,14 @@ build-backend = "hatchling.build"
 [project]
 name = "myelin-memory"
 version = "0.3.0"
-description = "Cognitive memory layer for AI agents. Learns procedures from behavior, builds knowledge graphs, transfers knowledge across agents via MCP."
+description = "Procedural learning layer for AI agents. Learns reusable workflows from behavior and transfers procedures across agents via MCP."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
 authors = [
     { name = "Nino", email = "nino@niraven.dev" },
 ]
-keywords = ["ai", "agents", "memory", "mcp", "cognitive-architecture", "procedural-learning"]
+keywords = ["ai", "agents", "mcp", "procedural-learning", "agent-memory", "agent-workflows", "cognitive-architecture"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",

@@ -15,7 +15,7 @@ Myelin should not compete by saying “mem0 is bad.” The stronger framing is:
 | Extraction | LLM-centered memory extraction | Algorithmic core learning; optional embeddings |
 | Retrieval | Semantic/BM25/entity/temporal retrieval | Context assembly plus procedure matching |
 | Best fit | Personalized assistants, support, user memory | Coding agents, operational agents, repeatable workflows |
-| Distribution | SDKs, CLI, cloud, self-hosted, agent skills | MCP-native local memory layer |
+| Distribution | SDKs, CLI, cloud, self-hosted, agent skills | MCP-native local learning layer |
 
 The public line:
 
@@ -31,7 +31,7 @@ Myelin is narrower and stronger:
 
 | Dimension | Sigil | Myelin |
 |-----------|-------|--------|
-| Product shape | Broad agent substrate | Focused procedural memory layer |
+| Product shape | Broad agent substrate | Focused procedural learning layer |
 | Procedural memory | Stores taught procedures | Learns procedures from repeated behavior |
 | Distribution | Library/CLI prototype | MCP-native agent integration |
 | Moat | Local-first breadth | ClustalW-inspired procedure discovery |

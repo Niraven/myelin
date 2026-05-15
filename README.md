@@ -14,11 +14,11 @@
   <strong>mem0 remembers. Myelin learns.</strong>
 </p>
 
-Myelin is a cognitive memory layer for AI agents that learns procedures from behavior, builds knowledge graphs from observations, and transfers knowledge across agents via MCP.
+Myelin is a procedural learning layer for AI agents. It observes agent behavior, learns reusable workflows, assembles actionable context, and transfers learned procedures across agents via MCP.
 
-Named after the biological myelin sheath that accelerates neural signal transmission, Myelin accelerates AI agents by giving them persistent, structured memory that improves with use.
+Named after the biological myelin sheath that accelerates neural signal transmission, Myelin accelerates AI agents by helping them reuse what worked instead of rediscovering the same workflow every session.
 
-Myelin can learn from single agents, delegated teams, and swarms as long as the orchestrator emits structured observations. It does not replace orchestration.
+Myelin can learn from any AI system that emits structured observations: single agents, coding assistants, delegated teams, swarms, and orchestrated runtimes. It does not replace orchestration, planning, task management, or generic fact memory.
 
 > Orchestrators coordinate agents. Myelin learns from what agents repeatedly do.
 
@@ -229,9 +229,9 @@ Most memory systems are built around recall: store facts, retrieve relevant text
 | Transfer | Adapts procedures across agents with different tool capabilities |
 | Deployment | Local-first SQLite with optional embeddings |
 
-Systems like mem0 and Supermemory are strong references for fact recall and retrieval. Myelin is aimed at the next layer: letting agents learn how work gets done.
+Systems like mem0 and Supermemory are strong references for fact recall and retrieval. Myelin is aimed at the next layer: letting AI systems learn how work gets done.
 
-For Hermes specifically:
+Hermes is the first flagship integration path, not the boundary of the product:
 
 > Hermes operates. Myelin learns the operating procedures.
 

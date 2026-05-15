@@ -1,4 +1,4 @@
-"""Myelin MCP server. Exposes tools for agent memory and intelligence."""
+"""Myelin MCP server. Exposes tools for agent procedural learning and context."""
 
 from __future__ import annotations
 

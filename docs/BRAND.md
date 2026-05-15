@@ -8,11 +8,11 @@ Primary line:
 
 Short description:
 
-> Cognitive procedural memory for AI agents.
+> Procedural learning for AI agents.
 
 Long description:
 
-> Myelin watches agents work, discovers repeated action patterns, promotes them into executable procedures, and improves confidence with feedback.
+> Myelin watches AI agents work, discovers repeated action patterns, promotes them into executable procedures, and improves confidence with feedback.
 
 ## Visual Identity
 
@@ -43,9 +43,10 @@ The README and GitHub social preview should use `assets/brand/social-preview.png
 ## Voice
 
 - Lead with proof, not hype.
-- Say “procedure learning” more than “memory.”
+- Say “procedural learning” and “agent acceleration” more than “memory.”
 - Be explicit about local-first and no LLM requirement for core operations.
 - Avoid benchmark claims unless they are freshly verified.
+- Treat Hermes as the first flagship integration, not the whole market.
 
 ## Greek-Tech Direction
 

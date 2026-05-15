@@ -2,7 +2,7 @@
 
 ## Positioning
 
-Myelin should launch as a procedural memory layer for AI agents, not as another vector-memory product.
+Myelin should launch as a procedural learning layer for AI agents, not as another vector-memory product.
 
 Primary line:
 
@@ -15,7 +15,7 @@ The first public proof should focus on one claim: repeated agent behavior become
 1. **Ship the proof demo.** Use `examples/procedure_learning_demo.py` as the canonical terminal demo and record it as a short GIF or video.
 2. **Publish only verified claims.** Avoid live star counts, benchmark rankings, or competitor claims unless they are re-checked immediately before launch.
 3. **Make install friction boring.** Keep `pip install myelin-memory`, Docker, and MCP config examples as the launch-readiness bar.
-4. **Prioritize Hermes, Claude Code, and Codex integration docs.** Hermes has the cleanest memory-provider fit; Claude Code and Codex have the largest cross-session memory pain.
+4. **Prioritize Hermes, Claude Code, and Codex integration docs.** Hermes is the first flagship integration path; Claude Code and Codex have the largest cross-session workflow-learning pain.
 5. **Delay Phase 2 features.** Predictive Procedures is the best next feature after launch because it makes Myelin feel proactive. Surprise-Driven Learning should build on it. Causal graph work should wait until after usage proves demand.
 
 ## Launch Checklist
@@ -29,7 +29,7 @@ The first public proof should focus on one claim: repeated agent behavior become
 
 ## Revenue Path
 
-The open-source repo should earn trust with local-first memory. The paid product should focus on teams:
+The open-source repo should earn trust with local-first procedural learning. The paid product should focus on teams:
 
 - Managed shared memory across multiple agents.
 - Procedure library with approval, versioning, and transfer analytics.

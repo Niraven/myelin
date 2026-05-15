@@ -2,7 +2,7 @@
 
 ## One-Liner
 
-Myelin is a local-first procedural memory layer for AI agents: it watches repeated workflows, learns executable procedures, and improves them with feedback.
+Myelin is a local-first procedural learning layer for AI agents: it watches repeated workflows, learns executable procedures, and improves them with feedback.
 
 For orchestrators:
 
@@ -12,7 +12,7 @@ For orchestrators:
 
 Most agent memory systems retrieve text. Myelin learns how work gets done. It observes agent actions, clusters repeated workflows, uses ClustalW-inspired sequence alignment to extract procedure steps, and exposes the learned workflow through MCP.
 
-Sigil was the broad research prototype. Myelin is the focused product: procedural memory for AI agents.
+Sigil was the broad research prototype. Myelin is the focused product: procedural learning for AI agents.
 
 ## Demo Command
 
@@ -32,7 +32,7 @@ Show HN: Myelin, procedural memory for AI agents
 Post:
 
 ```text
-Myelin is a local-first memory layer for AI agents, but the main idea is procedural memory rather than fact recall.
+Myelin is a local-first procedural learning layer for AI agents. The main idea is workflow learning rather than fact recall.
 
 The demo observes five repeated deployment workflows, promotes the shared action sequence into an executable procedure, and updates confidence after success feedback. Core learning runs locally on SQLite/FTS5 and does not require an LLM call.
 
@@ -62,7 +62,7 @@ Hermes demo: python examples/hermes_procedure_demo.py
 Recommended description:
 
 ```text
-Cognitive procedural memory for AI agents. MCP-native, local-first, SQLite-backed.
+Procedural learning for AI agents. MCP-native, local-first, SQLite-backed.
 ```
 
 Recommended topics:
