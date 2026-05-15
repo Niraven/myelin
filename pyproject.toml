@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "myelin"
-version = "0.1.0"
-description = "Cognitive memory layer for AI agents. Learns procedures from behavior, transfers knowledge across agents."
+name = "myelin-memory"
+version = "0.3.0"
+description = "Cognitive memory layer for AI agents. Learns procedures from behavior, builds knowledge graphs, transfers knowledge across agents via MCP."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
