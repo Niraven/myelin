@@ -340,6 +340,20 @@ src/myelin/
 
 Myelin's public speed story is agent acceleration: agents spend less time rediscovering repeated workflows because they can reuse learned procedures.
 
+### Benchmark Results (v0.3.0, 100-iteration fast trace)
+
+| Operation | p50 | p95 | avg |
+|-----------|-----|-----|-----|
+| Observe (store) | 9.4ms | 9.4ms | 9.4ms |
+| Recall (multi-signal) | 35.1ms | 49.7ms | 36.4ms |
+| Context assembly | 2.1ms | 2.6ms | 2.1ms |
+| Execute procedure | 0.13ms | 0.18ms | 0.14ms |
+| Promotion (one-time) | 6.3s | — | 6.3s |
+
+- **Procedure hit rate:** 100%
+- **Agent steps saved per procedure:** 3.0
+- **Tests:** 636 passing (0 failures)
+
 Run a local benchmark:
 
 ```bash
