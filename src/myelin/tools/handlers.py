@@ -929,10 +929,29 @@ class ToolHandlers:
         from ..cognitive.promoter import Promoter
         from ..cognitive.sleep import SleepCycle
 
-        sleep = SleepCycle(self.db, hybrid_extractor=self.hybrid_extractor)
-        sleep_result = await sleep.run()
-        promoter = Promoter(self.db, self.episodic, self.procedural)
-        promoter_result = await promoter.run()
+        try:
+            sleep = SleepCycle(self.db, hybrid_extractor=self.hybrid_extractor)
+            sleep_result = await sleep.run()
+        except Exception as e:
+            sleep_result = {
+                "error": str(e),
+                "entities_extracted": 0,
+                "relationships_created": 0,
+                "entities_merged": 0,
+                "temporal_states_updated": 0,
+                "cross_domain_links": 0,
+                "stale_flagged": 0,
+                "importance_scores_updated": 0,
+                "nrem": {},
+                "rem": {},
+            }
+
+        try:
+            promoter = Promoter(self.db, self.episodic, self.procedural)
+            promoter_result = await promoter.run()
+        except Exception as e:
+            promoter_result = {"error": str(e), "processed": 0, "created": 0}
+
         return {
             "status": "completed",
             "process": "sleep",

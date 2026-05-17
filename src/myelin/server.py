@@ -554,7 +554,11 @@ def create_server(
         if not handler:
             return [TextContent(type="text", text=json.dumps({"error": f"Unknown tool: {name}"}))]
 
-        result = await handler(**arguments)
+        try:
+            result = await handler(**arguments)
+        except Exception as e:
+            return [TextContent(type="text", text=json.dumps({"error": str(e), "tool": name}))]
+
         return [TextContent(type="text", text=json.dumps(result, default=str))]
 
     return server
