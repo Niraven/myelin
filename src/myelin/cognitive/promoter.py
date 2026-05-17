@@ -98,12 +98,12 @@ class Promoter(CognitiveProcess):
             # Fall back to created_at if access_times is empty (fresh episodes)
             if not all_times:
                 for ep in cluster_episodes:
-                    created = ep.get("created_at", "")
-                    if created:
+                    created_at = ep.get("created_at", "")
+                    if created_at:
                         try:
                             import datetime
 
-                            dt = datetime.datetime.fromisoformat(created)
+                            dt = datetime.datetime.fromisoformat(created_at)
                             all_times.append(dt.timestamp())
                         except (ValueError, TypeError):
                             pass

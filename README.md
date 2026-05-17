@@ -194,6 +194,26 @@ Add to your MCP client config:
 
 This is a stdio MCP server. Do not configure it as an HTTP URL unless you run it behind a separate bridge.
 
+### Backfill (2 minutes to value)
+
+Myelin learns from observations. If you have existing session history, backfill it instantly:
+
+```bash
+# From a checkout
+python scripts/myelin-backfill.py --limit 100
+
+# Or from pip install — download the script first
+curl -sL https://raw.githubusercontent.com/Niraven/myelin/main/scripts/myelin-backfill.py | python3 - --limit 100
+```
+
+This reads your past sessions, extracts tool calls, and batch-observes them into Myelin.
+Then runs the sleep cycle to build the entity graph and the promoter to discover procedures.
+
+**Before backfill:** 115 episodes, 12 procedures, 3 relationships
+**After backfill:** 1,679 episodes, 20 procedures, 315 relationships
+
+Then Myelin learns your specific patterns from daily usage.
+
 ### Verify Procedure Learning
 
 From a checkout:
