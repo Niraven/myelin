@@ -107,6 +107,7 @@ class ContextAssembler:
                     "score": m.get("_composite_score", 0.0),
                     "scores": m.get("_scores", {}),
                     "source_agent": m.get("source_agent", "unknown"),
+                    "provenance": m.get("_provenance"),
                 }
                 for m in memories
             ],

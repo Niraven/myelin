@@ -15,14 +15,71 @@ faster for local deployments.
 
 from __future__ import annotations
 
+import datetime
+import json
 from typing import Any
 
 from ..core.activation import base_level_activation
 from ..core.database import Database
 from ..core.json_utils import json_safe_loads
+from ..core.models import RetrievalProvenance
 from ..knowledge.entities import EntityStore, extract_entities_from_text
 from ..knowledge.graph import KnowledgeGraph
 from ..knowledge.temporal import TemporalIndex
+
+# ── Hardening helpers ──────────────────────────────────────────
+
+
+def _clamp_limit(limit: int, min_val: int = 1, max_val: int = 100) -> int:
+    """Clamp the retrieval limit to a safe range."""
+    return max(min_val, min(limit, max_val))
+
+
+def _validate_weights(weights: dict[str, float] | None) -> dict[str, float]:
+    """Validate and normalise retrieval weights.
+
+    Returns default weights when input is None, clamps negative values
+    to zero, and normalises so they sum to 1.0.
+    """
+    w = weights or {
+        "text": 0.25,
+        "vector": 0.25,
+        "entity": 0.20,
+        "temporal": 0.10,
+        "activation": 0.10,
+        "importance": 0.10,
+    }
+    # Clamp negative values
+    w = {k: max(0.0, v) for k, v in w.items()}
+    total = sum(w.values())
+    if total > 0 and abs(total - 1.0) > 1e-6:
+        w = {k: v / total for k, v in w.items()}
+    return w
+
+
+def _parse_iso_timestamp(value: Any) -> datetime.datetime | None:
+    """Parse an ISO-8601 timestamp string, returning None on failure."""
+    if not value or not isinstance(value, str):
+        return None
+    try:
+        return datetime.datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return None
+
+
+def _filter_by_max_age(result: dict[str, Any], max_age_hours: float | None) -> bool:
+    """Return False if the result is older than max_age_hours."""
+    if max_age_hours is None:
+        return True
+    ts = result.get("timestamp") or result.get("created_at")
+    parsed = _parse_iso_timestamp(ts)
+    if parsed is None:
+        return True  # no timestamp → keep (cannot judge age)
+    age_hours = (datetime.datetime.utcnow() - parsed.replace(tzinfo=None)).total_seconds() / 3600
+    return age_hours <= max_age_hours
+
+
+# ── Retriever ──────────────────────────────────────────────────
 
 
 class MultiSignalRetriever:
@@ -52,19 +109,41 @@ class MultiSignalRetriever:
         include_episodes: bool = True,
         agent_ids: list[str] | None = None,
         querying_agent_id: str | None = None,
+        min_confidence: float | None = None,
+        max_age_hours: float | None = None,
     ) -> list[dict[str, Any]]:
         """Multi-signal retrieval across all memory types.
 
-        Returns ranked results with source type and composite score.
+        Parameters
+        ----------
+        query : str
+            Natural-language query text.
+        query_embedding : list[float] | None
+            Optional pre-computed embedding vector.
+        domain : str | None
+            Optional domain filter.
+        limit : int
+            Maximum results to return. Clamped to [1, 100].
+        weights : dict[str, float] | None
+            Per-signal fusion weights. Validated and normalised.
+        include_procedures, include_semantic, include_episodes : bool
+            Toggle retrieval from each memory store.
+        agent_ids : list[str] | None
+            Restrict to specific source agent(s). ['*'] or None = no restriction.
+        querying_agent_id : str | None
+            When set, applies a cross-agent confidence discount.
+        min_confidence : float | None
+            Minimum confidence threshold for episodic/procedure results (0.0-1.0).
+        max_age_hours : float | None
+            Maximum age in hours. Results older than this are excluded.
+
+        Returns
+        -------
+        list[dict[str, Any]]
+            Ranked results with ``_provenance`` metadata attached to each.
         """
-        w = weights or {
-            "text": 0.25,
-            "vector": 0.25,
-            "entity": 0.20,
-            "temporal": 0.10,
-            "activation": 0.10,
-            "importance": 0.10,
-        }
+        limit = _clamp_limit(limit)
+        w = _validate_weights(weights)
 
         candidates: dict[str, dict[str, Any]] = {}
 
@@ -91,6 +170,7 @@ class MultiSignalRetriever:
                 for n in neighbors:
                     entity_boost_ids.add(n["id"])
 
+        retrieved_at = datetime.datetime.utcnow().isoformat()
         scored: list[tuple[float, dict]] = []
         for _cid, candidate in candidates.items():
             text_score = candidate.get("_text_score", 0.0)
@@ -109,6 +189,18 @@ class MultiSignalRetriever:
                 + w["activation"] * activation_score
                 + w.get("importance", 0.0) * importance_score
             )
+
+            # Confidence filter (procedures carry their own confidence;
+            # episodes use importance_score as a proxy)
+            candidate_confidence = candidate.get("confidence")
+            if candidate_confidence is None:
+                candidate_confidence = candidate.get("importance_score", 0.5)
+            if min_confidence is not None and candidate_confidence < min_confidence:
+                continue
+
+            # Max-age filter
+            if not _filter_by_max_age(candidate, max_age_hours):
+                continue
 
             result = {
                 k: v
@@ -139,6 +231,18 @@ class MultiSignalRetriever:
                     multiplier = 0.7
                 result["_composite_score"] *= multiplier
                 result["_scores"]["cross_agent_discount"] = multiplier
+
+            # Attach durable provenance metadata
+            result["_provenance"] = RetrievalProvenance(
+                source_id=result.get("id", ""),
+                source_type=str(result.get("_source_type", "unknown")),
+                source_agent=str(result.get("source_agent", "unknown")),
+                domain=result.get("domain"),
+                timestamp=result.get("timestamp") or result.get("created_at"),
+                retrieved_at=retrieved_at,
+                retrieval_signals=dict(result.get("_scores", {})),
+                composite_score=float(result.get("_composite_score", 0.0)),
+            ).to_dict()
 
             scored.append((result["_composite_score"], result))
 
@@ -267,10 +371,10 @@ class MultiSignalRetriever:
             return 0.5
 
         try:
-            from datetime import datetime
-
-            created = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
-            age_hours = (datetime.utcnow() - created.replace(tzinfo=None)).total_seconds() / 3600
+            created = datetime.datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+            age_hours = (
+                datetime.datetime.utcnow() - created.replace(tzinfo=None)
+            ).total_seconds() / 3600
             return 1.0 / (1.0 + age_hours / 168.0)
         except (ValueError, TypeError):
             return 0.5
