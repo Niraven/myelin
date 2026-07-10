@@ -8,6 +8,7 @@ from typing import Any
 
 from ..core.activation import base_level_activation
 from ..core.database import Database
+from ..core.json_utils import deserialize_row
 from ..core.models import Episode
 
 
@@ -28,8 +29,7 @@ class EpisodicMemory:
     def get(self, episode_id: str) -> dict[str, Any] | None:
         row = self.db.fetchone("SELECT * FROM episodes WHERE id = ?", (episode_id,))
         if row:
-            row["access_times"] = json.loads(row["access_times"])
-            row["tags"] = json.loads(row["tags"])
+            deserialize_row(row)
         return row
 
     def access(self, episode_id: str) -> None:

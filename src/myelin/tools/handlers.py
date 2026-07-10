@@ -391,6 +391,9 @@ class ToolHandlers:
         if modifications:
             self.procedural.record_modification(procedure_id, modifications)
 
+        # Recalculate trust state based on accumulated evidence
+        trust_state = self.procedural.update_trust_state(procedure_id)
+
         proc = self.procedural.get(procedure_id)
         trust_level = (
             procedure_trust_level(
@@ -405,6 +408,7 @@ class ToolHandlers:
             "procedure_id": procedure_id,
             "new_confidence": new_confidence,
             "trust_level": trust_level,
+            "trust_state": trust_state,
             "recommendation": procedure_recommendation(trust_level)
             if trust_level != "unknown"
             else "procedure_not_found",
@@ -1009,6 +1013,194 @@ class ToolHandlers:
         result = self.user_profiler.get_profile(agent_id)
         result["markdown"] = self._format_profile_markdown(result)
         return result
+
+    # ── 19. myelin_memorize ──────────────────────────────────
+
+    async def memorize(
+        self,
+        agent_id: str,
+        key: str,
+        value: str,
+        domain: str | None = None,
+        ttl_days: int | None = None,
+    ) -> dict[str, Any]:
+        """Store a durable semantic fact (key-value). Upserts if agent_id+key already exists."""
+        import uuid
+        import datetime
+
+        now = datetime.datetime.utcnow()
+
+        # Check if fact already exists
+        existing = self.db.fetchone(
+            "SELECT id, value FROM semantic_facts WHERE agent_id = ? AND key = ? AND deleted_at IS NULL",
+            (agent_id, key),
+        )
+
+        if existing:
+            # Update existing fact
+            updates: dict[str, Any] = {"value": value, "access_count": 0}
+            if domain is not None:
+                updates["domain"] = domain
+            if ttl_days is not None:
+                expiry = now + datetime.timedelta(days=ttl_days)
+                updates["expires_at"] = expiry.strftime("%Y-%m-%dT%H:%M:%S")
+            self.db.update("semantic_facts", existing["id"], updates)
+            fact_id = existing["id"]
+        else:
+            # Insert new fact
+            fact_id = str(uuid.uuid4())
+            fact = {
+                "id": fact_id,
+                "agent_id": agent_id,
+                "key": key,
+                "value": value,
+                "domain": domain,
+                "created_at": now.strftime("%Y-%m-%dT%H:%M:%S"),
+                "access_count": 0,
+            }
+            if ttl_days is not None:
+                expiry = now + datetime.timedelta(days=ttl_days)
+                fact["expires_at"] = expiry.strftime("%Y-%m-%dT%H:%M:%S")
+            self.db.insert("semantic_facts", fact)
+
+        return {"fact_id": fact_id, "status": "stored" if not existing else "updated"}
+
+    # ── 20. myelin_update ────────────────────────────────────
+
+    async def update(
+        self,
+        memory_id: str,
+        memory_type: str = "episode",
+        content_text: str | None = None,
+        action: str | None = None,
+        value: str | None = None,
+    ) -> dict[str, Any]:
+        """Update an existing memory (episodic observation or semantic fact) by ID."""
+        if memory_type == "episode":
+            existing = self.db.fetchone(
+                "SELECT id FROM episodes WHERE id = ? AND deleted_at IS NULL",
+                (memory_id,),
+            )
+            if not existing:
+                return {"success": False, "error": f"Episode {memory_id} not found"}
+            updates: dict[str, Any] = {}
+            if content_text is not None:
+                updates["content_text"] = content_text
+            if action is not None:
+                updates["action"] = action
+            if not updates:
+                return {"success": False, "error": "No fields to update"}
+            self.db.update("episodes", memory_id, updates)
+            return {"success": True, "memory_id": memory_id, "memory_type": "episode"}
+
+        elif memory_type == "semantic":
+            existing = self.db.fetchone(
+                "SELECT id FROM semantic_facts WHERE id = ? AND deleted_at IS NULL",
+                (memory_id,),
+            )
+            if not existing:
+                return {"success": False, "error": f"Semantic fact {memory_id} not found"}
+            if value is not None:
+                self.db.update("semantic_facts", memory_id, {"value": value})
+                return {"success": True, "memory_id": memory_id, "memory_type": "semantic"}
+            return {"success": False, "error": "No fields to update"}
+
+        return {"success": False, "error": f"Unknown memory_type: {memory_type}"}
+
+    # ── 21. myelin_forget ────────────────────────────────────
+
+    async def forget(
+        self,
+        memory_id: str,
+        memory_type: str = "episode",
+    ) -> dict[str, Any]:
+        """Soft-delete a memory by ID. Marks as deleted rather than removing rows."""
+        import datetime
+
+        now = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+
+        if memory_type == "episode":
+            existing = self.db.fetchone(
+                "SELECT id FROM episodes WHERE id = ? AND deleted_at IS NULL",
+                (memory_id,),
+            )
+            if not existing:
+                return {"success": False, "error": f"Episode {memory_id} not found or already deleted"}
+            self.db.update("episodes", memory_id, {"deleted_at": now})
+
+        elif memory_type == "semantic":
+            existing = self.db.fetchone(
+                "SELECT id FROM semantic_facts WHERE id = ? AND deleted_at IS NULL",
+                (memory_id,),
+            )
+            if not existing:
+                return {"success": False, "error": f"Semantic fact {memory_id} not found or already deleted"}
+            self.db.update("semantic_facts", memory_id, {"deleted_at": now})
+
+        elif memory_type == "procedure":
+            existing = self.db.fetchone(
+                "SELECT id FROM procedures WHERE id = ?",
+                (memory_id,),
+            )
+            if not existing:
+                return {"success": False, "error": f"Procedure {memory_id} not found"}
+            self.db.update("procedures", memory_id, {"deleted_at": now})
+
+        else:
+            return {"success": False, "error": f"Unknown memory_type: {memory_type}"}
+
+        return {"success": True, "memory_id": memory_id, "memory_type": memory_type}
+
+    # ── 22. myelin_facts ─────────────────────────────────────
+
+    async def facts(
+        self,
+        agent_id: str,
+        key_prefix: str | None = None,
+        domain: str | None = None,
+        limit: int = 20,
+    ) -> dict[str, Any]:
+        """Query stored semantic facts for an agent."""
+        conditions = ["agent_id = ?", "deleted_at IS NULL"]
+        params: list[Any] = [agent_id]
+
+        if key_prefix:
+            conditions.append("key LIKE ?")
+            params.append(f"{key_prefix}%")
+
+        if domain:
+            conditions.append("domain = ?")
+            params.append(domain)
+
+        sql = f"SELECT * FROM semantic_facts WHERE {' AND '.join(conditions)} ORDER BY created_at DESC LIMIT ?"
+        params.append(limit)
+
+        rows = self.db.fetchall(sql, tuple(params))
+
+        import datetime
+        now = datetime.datetime.utcnow()
+
+        facts_list = []
+        for row in rows:
+            expired = False
+            if row.get("expires_at"):
+                try:
+                    expiry = datetime.datetime.strptime(row["expires_at"], "%Y-%m-%dT%H:%M:%S")
+                    expired = expiry < now
+                except (ValueError, TypeError):
+                    pass
+            facts_list.append({
+                "id": row["id"],
+                "key": row["key"],
+                "value": row["value"],
+                "domain": row.get("domain"),
+                "created_at": row.get("created_at"),
+                "expired": expired,
+                "expires_at": row.get("expires_at"),
+                "access_count": row.get("access_count", 0),
+            })
+
+        return {"agent_id": agent_id, "facts": facts_list, "count": len(facts_list)}
 
     # ── Internal helpers ───────────────────────────────────────
 
