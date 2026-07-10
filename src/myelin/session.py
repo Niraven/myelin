@@ -85,13 +85,14 @@ class Session:
         self._episode_count += 1
         self.orchestrator.on_write()
 
-        self.entity_store.process_episode(
-            episode_id=episode_id,
-            content_text=content_text,
-            action=action,
-            action_type=action_type,
-            domain=domain,
-        )
+        if self.entity_store.has_entity_mentions(episode_id) == 0:
+            self.entity_store.process_episode(
+                episode_id=episode_id,
+                content_text=content_text,
+                action=action,
+                action_type=action_type,
+                domain=domain,
+            )
 
         if domain:
             self.confidence_map.update_domain(domain, episode_delta=1)

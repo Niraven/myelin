@@ -299,6 +299,19 @@ class EntityStore:
         self.db.insert("entity_mentions", mention.model_dump())
         return mention_id
 
+    def has_entity_mentions(self, source_id: str, source_type: str = "episode") -> int:
+        """Return the count of existing entity mentions for a source.
+
+        Returns 0 if no mentions exist. Used by callers to avoid
+        re-extracting entities from an episode that already has them.
+        """
+        row = self.db.fetchone(
+            "SELECT COUNT(*) as cnt FROM entity_mentions "
+            "WHERE source_id = ? AND source_type = ?",
+            (source_id, source_type),
+        )
+        return row["cnt"] if row else 0
+
     def get_entity(self, entity_id: str) -> dict[str, Any] | None:
         return self.db.fetchone("SELECT * FROM entities WHERE id = ?", (entity_id,))
 
@@ -366,7 +379,20 @@ class EntityStore:
         action_type: str = "",
         domain: str | None = None,
     ) -> list[str]:
-        """Extract entities from an episode and store them. Returns entity IDs."""
+        """Extract entities from an episode and store them. Returns entity IDs.
+
+        If entity mentions already exist for this episode, skips re-extraction
+        and returns existing entity IDs (dedup guard).
+        """
+        existing = self.has_entity_mentions(episode_id)
+        if existing > 0:
+            rows = self.db.fetchall(
+                "SELECT DISTINCT entity_id FROM entity_mentions "
+                "WHERE source_id = ? AND source_type = 'episode'",
+                (episode_id,),
+            )
+            return [r["entity_id"] for r in rows]
+
         raw_entities = extract_entities_from_text(content_text, action, action_type)
         entity_ids = []
 
