@@ -64,23 +64,32 @@ class _CurrentHandler:
     """Matches the current semantic-fact handler API."""
 
     def __init__(self) -> None:
-        self.facts: dict[str, dict] = {}
+        self._facts: dict[str, dict] = {}
 
     async def memorize(self, agent_id: str, key: str, value: str, domain=None, ttl_days=None) -> dict:
-        fact_id = f"semantic-{len(self.facts)}"
-        self.facts[fact_id] = {"agent_id": agent_id, "key": key, "value": value, "domain": domain}
+        fact_id = f"semantic-{len(self._facts)}"
+        self._facts[fact_id] = {"agent_id": agent_id, "key": key, "value": value, "domain": domain}
         return {"fact_id": fact_id}
 
     async def update(self, memory_id: str, memory_type: str = "episode", content_text=None, action=None, value=None) -> dict:
-        self.facts[memory_id]["value"] = value
+        self._facts[memory_id]["value"] = value
         return {"success": True, "memory_id": memory_id, "memory_type": memory_type}
 
     async def forget(self, memory_id: str, memory_type: str = "episode") -> dict:
-        self.facts.pop(memory_id, None)
+        self._facts.pop(memory_id, None)
         return {"success": True, "memory_id": memory_id, "memory_type": memory_type}
 
     async def context(self, **kwargs) -> dict:
         return {"relevant_memories": []}
+
+    async def facts(self, agent_id: str, key_prefix=None, domain=None, limit: int = 20) -> dict:
+        return {
+            "facts": [
+                {"id": fact_id, **fact}
+                for fact_id, fact in self._facts.items()
+                if fact["agent_id"] == agent_id
+            ][:limit]
+        }
 
     async def profile(self, agent_id: str = "hermes") -> dict:
         return {"static_facts": [], "fact_count": 0, "category_breakdown": {}}
@@ -293,11 +302,13 @@ class TestCurrentHandlerCompatibility:
         provider = MyelinProvider(tool_handlers=handler)
         result = await provider.add("current api", metadata={"domain": "test"})
         memory_id = result["event_id"]
-        assert handler.facts[memory_id]["value"] == "current api"
+        assert handler._facts[memory_id]["value"] == "current api"
+        search_results = await provider.search("current api")
+        assert any(r.memory == "current api" for r in search_results)
         await provider.update(memory_id, "updated")
-        assert handler.facts[memory_id]["value"] == "updated"
+        assert handler._facts[memory_id]["value"] == "updated"
         await provider.delete(memory_id)
-        assert memory_id not in handler.facts
+        assert memory_id not in handler._facts
 
 
 class TestMem0DualWriteDefaultOff:

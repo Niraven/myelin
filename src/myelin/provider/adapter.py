@@ -110,9 +110,33 @@ class MyelinProvider(MemoryProvider):
                 results.append(
                     SearchResult(
                         id=f.get("id", ""),
-                        memory=f.get("fact", ""),
+                        memory=f.get("fact", f.get("value", f.get("content", ""))),
                         score=f.get("confidence", 0.5),
                         metadata={"source_type": "profile_fact", "category": f.get("category", "")},
+                    )
+                )
+        except Exception:
+            pass
+
+        # Semantic facts are the authoritative output of myelin_memorize.
+        # Include them even when they have not graduated into a user profile.
+        try:
+            facts_payload = await self._handlers.facts(agent_id=agent_id, limit=max(top_k, 100))
+            query_lower = query.lower()
+            existing_ids = {r.id for r in results}
+            for fact in facts_payload.get("facts", []):
+                text = fact.get("value", fact.get("fact", ""))
+                if query_lower not in f"{fact.get('key', '')} {text}".lower():
+                    continue
+                fact_id = fact.get("id", "")
+                if fact_id in existing_ids:
+                    continue
+                results.append(
+                    SearchResult(
+                        id=fact_id,
+                        memory=text,
+                        score=0.5,
+                        metadata={"source_type": "semantic_fact", "domain": fact.get("domain")},
                     )
                 )
         except Exception:
