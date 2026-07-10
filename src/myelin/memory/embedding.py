@@ -210,7 +210,11 @@ class ApiEmbedding:
 # ---------------------------------------------------------------------------
 
 
-def get_embedding_provider(provider: str = "none", **kwargs: Any) -> EmbeddingProvider:
+def get_embedding_provider(
+    provider: str = "none",
+    model_name: str | None = None,
+    **kwargs: Any,
+) -> EmbeddingProvider:
     """Resolve a provider string to an ``EmbeddingProvider`` instance.
 
     Recognised values:
@@ -226,13 +230,19 @@ def get_embedding_provider(provider: str = "none", **kwargs: Any) -> EmbeddingPr
         return NoOpEmbedding()
 
     if p == "local":
+        if model_name is not None:
+            kwargs.setdefault("model_name", model_name)
         return LocalEmbedding(**kwargs)
 
     if p.startswith("api:"):
         endpoint = p[4:]
+        if model_name is not None:
+            kwargs.setdefault("model", model_name)
         return ApiEmbedding(endpoint, **kwargs)
 
     if p.startswith("http://") or p.startswith("https://"):
+        if model_name is not None:
+            kwargs.setdefault("model", model_name)
         return ApiEmbedding(p, **kwargs)
 
     raise ValueError(

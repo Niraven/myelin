@@ -52,6 +52,19 @@ class TestFactory:
         e = get_embedding_provider("api:http://localhost:8000/v1/embeddings")
         assert isinstance(e, ApiEmbedding)
 
+    def test_api_custom_model_name(self):
+        e = get_embedding_provider(
+            "api:http://localhost:11434/api/embeddings",
+            model_name="nomic-embed-text",
+        )
+        assert isinstance(e, ApiEmbedding)
+        assert e._model == "nomic-embed-text"
+
+    def test_local_custom_model_name(self):
+        e = get_embedding_provider("local", model_name="custom/local-model")
+        assert isinstance(e, LocalEmbedding)
+        assert e._model_name == "custom/local-model"
+
     def test_invalid(self):
         with pytest.raises(ValueError):
             get_embedding_provider("bogus")

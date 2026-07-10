@@ -517,12 +517,13 @@ def create_server(
     embedding_provider: str = "none",
     llm_extraction: str | None = None,
     synthesis_model: str | None = None,
+    embedding_model_name: str | None = None,
 ) -> Server:
     server = Server("myelin")
     db = Database(db_path)
     # Provider is resolved now, but LocalEmbedding won't load the model until
     # the first embed() call (lazy loading).
-    embedder = get_embedding_provider(embedding_provider)
+    embedder = get_embedding_provider(embedding_provider, model_name=embedding_model_name)
 
     episodic = EpisodicMemory(db)
     semantic = SemanticMemory(db)
@@ -629,8 +630,15 @@ async def run_server(
     embedding_provider: str = "none",
     llm_extraction: str | None = None,
     synthesis_model: str | None = None,
+    embedding_model_name: str | None = None,
 ):
-    server = create_server(db_path, embedding_provider, llm_extraction, synthesis_model)
+    server = create_server(
+        db_path,
+        embedding_provider,
+        llm_extraction,
+        synthesis_model,
+        embedding_model_name,
+    )
     async with stdio_server() as (read_stream, write_stream):
         await server.run(read_stream, write_stream, server.create_initialization_options())
 
@@ -667,10 +675,27 @@ def main():
         default=None,
         help="LLM endpoint for query-time synthesis (e.g. http://localhost:11434/v1/chat/completions)",
     )
+    parser.add_argument(
+        "--embedding-model-name",
+        type=str,
+        default=None,
+        help=(
+            "Model identifier sent to the configured embedding provider "
+            "(for example 'nomic-embed-text' for Ollama)."
+        ),
+    )
     args = parser.parse_args()
     # --embedding-model takes precedence over deprecated --embeddings
     provider = args.embedding_model if args.embedding_model is not None else args.embeddings
-    asyncio.run(run_server(args.db, provider, args.llm_extraction, args.synthesis_model))
+    asyncio.run(
+        run_server(
+            db_path=args.db,
+            embedding_provider=provider,
+            llm_extraction=args.llm_extraction,
+            synthesis_model=args.synthesis_model,
+            embedding_model_name=args.embedding_model_name,
+        )
+    )
 
 
 if __name__ == "__main__":
