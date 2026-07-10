@@ -118,6 +118,8 @@ class ContextAssembler:
                 {
                     "id": m.get("id"),
                     "source_type": m.get("_source_type", "unknown"),
+                    "source_id": m.get("source_id", ""),
+                    "source_timestamp": m.get("source_timestamp"),
                     "content": m.get("content_text") or m.get("content") or m.get("name", ""),
                     "score": m.get("_composite_score", 0.0),
                     "scores": m.get("_scores", {}),

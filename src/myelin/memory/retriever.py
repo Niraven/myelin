@@ -206,6 +206,20 @@ class MultiSignalRetriever:
                 for k, v in candidate.items()
                 if not k.startswith("_") or k in ("_source_type",)
             }
+
+            # ── Durable provenance ──────────────────────────────────────
+            source_type = candidate.get("_source_type", "unknown")
+            source_id = candidate.get("id", "")
+            source_timestamp = (
+                candidate.get("timestamp")
+                or candidate.get("created_at")
+                or None
+            )
+            result["_source_type"] = source_type
+            result["source_id"] = source_id
+            result["source_timestamp"] = source_timestamp
+            # ─────────────────────────────────────────────────────────────
+
             result["_composite_score"] = composite
             result["_scores"] = {
                 "text": text_score,
