@@ -19,6 +19,17 @@ from .memory.semantic import SemanticMemory
 from .session import Session
 from .tools.handlers import ToolHandlers
 
+try:
+    from benchmarks.ci_subset import run_ci_subset
+    from benchmarks.nightly import run_nightly
+    from benchmarks.longmemeval.dataset import LongMemEvalDataset
+    from benchmarks.longmemeval.harness import evaluate
+    from benchmarks.locomo.harness import evaluate_locomo
+
+    _EVAL_AVAILABLE = True
+except ImportError:
+    _EVAL_AVAILABLE = False
+
 WORKFLOW = [
     "git pull origin main",
     "npm test",
@@ -160,6 +171,30 @@ async def _run(args: argparse.Namespace) -> list[dict[str, Any]]:
     return results
 
 
+def _run_eval(args: argparse.Namespace) -> dict[str, Any]:
+    """Run evaluation harness benchmarks."""
+    results: dict[str, Any] = {}
+
+    if args.nightly:
+        results["nightly"] = run_nightly()
+        return results
+
+    if args.longmemeval:
+        dataset = LongMemEvalDataset()
+        episodes = dataset.generate_episodes()
+        questions = dataset.generate_questions()
+        report = evaluate(questions, episodes)
+        results["longmemeval"] = report
+
+    if args.ci_subset:
+        results["ci_subset"] = run_ci_subset()
+
+    if args.locomo:
+        results["locomo"] = evaluate_locomo()
+
+    return results
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Benchmark Myelin local memory operations.")
     parser.add_argument(
@@ -169,7 +204,40 @@ def main() -> None:
     )
     parser.add_argument("--db", type=str, help="Optional base path for benchmark databases.")
     parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON only.")
+    parser.add_argument(
+        "--longmemeval",
+        action="store_true",
+        help="Run LongMemEval-S synthetic benchmark (500 episodes, 100 questions).",
+    )
+    parser.add_argument(
+        "--ci-subset",
+        action="store_true",
+        help="Run CI subset of LongMemEval (50 questions, <30s).",
+    )
+    parser.add_argument(
+        "--nightly",
+        action="store_true",
+        help="Run full nightly eval suite (LongMemEval + LoCoMo).",
+    )
+    parser.add_argument(
+        "--locomo",
+        action="store_true",
+        help="Run LoCoMo-S adversarial reasoning benchmark (50 questions).",
+    )
     args = parser.parse_args()
+
+    # ---- Eval harness modes ----
+    if _EVAL_AVAILABLE and (args.longmemeval or args.ci_subset or args.nightly or args.locomo):
+        results = _run_eval(args)
+        if args.json:
+            print(json.dumps(results, indent=2))
+            return
+        for name, report in results.items():
+            print(f"\n{'=' * 60}")
+            print(f"  {name}")
+            print(f"{'=' * 60}")
+            print(json.dumps(report, indent=2))
+        return
 
     results = asyncio.run(_run(args))
 

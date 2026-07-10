@@ -12,7 +12,15 @@ from ..core.activation import (
 )
 from ..core.database import Database
 from ..core.json_utils import deserialize_row
-from ..core.models import Procedure, ProcedureStatus, PromotionMethod
+from ..core.models import (
+    EvidenceOutcome,
+    EvidenceSource,
+    Procedure,
+    ProcedureEvidence,
+    ProcedureStatus,
+    PromotionMethod,
+    TrustState,
+)
 
 
 class ProceduralMemory:
@@ -78,6 +86,7 @@ class ProceduralMemory:
         if not proc:
             return 0.0
 
+        old_confidence = proc["confidence"]
         new_confidence = bayesian_confidence_update(proc["confidence"], success)
 
         access_times = proc["access_times"]
@@ -108,6 +117,15 @@ class ProceduralMemory:
             },
         )
 
+        # Record evidence for this execution
+        confidence_delta = new_confidence - old_confidence
+        self.record_evidence(
+            procedure_id=procedure_id,
+            source="execution",
+            outcome="success" if success else "failure",
+            confidence_delta=confidence_delta,
+        )
+
         if new_confidence >= 0.8 and proc["status"] == ProcedureStatus.DRAFT.value:
             self.db.update(
                 "procedures",
@@ -134,6 +152,113 @@ class ProceduralMemory:
                 "updated_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
             },
         )
+
+    # ── Procedure Evidence / Trust Lifecycle ─────────────────────
+
+    def record_evidence(
+        self,
+        procedure_id: str,
+        source: str,
+        outcome: str,
+        confidence_delta: float = 0.0,
+        episode_id: str | None = None,
+    ) -> str:
+        """Record a procedure evidence event (execution, feedback, or approval)."""
+        evidence = ProcedureEvidence(
+            procedure_id=procedure_id,
+            source=EvidenceSource(source),
+            outcome=EvidenceOutcome(outcome),
+            confidence_delta=confidence_delta,
+            episode_id=episode_id,
+        )
+        data = evidence.model_dump()
+        data["source"] = data["source"].value if hasattr(data["source"], "value") else data["source"]
+        data["outcome"] = data["outcome"].value if hasattr(data["outcome"], "value") else data["outcome"]
+        self.db.insert("procedure_evidence", data)
+
+        # Update last_evidence_timestamp on the procedure
+        self.db.update(
+            "procedures",
+            procedure_id,
+            {"last_evidence_timestamp": evidence.timestamp},
+        )
+        return evidence.id
+
+    def update_trust_state(self, procedure_id: str) -> str:
+        """Recalculate trust state for a procedure based on evidence.
+
+        Rules:
+        - stale:  no evidence in 30+ days
+        - validated: confidence >= 0.85 AND cross-agent transfer
+        - trusted:   confidence >= 0.7 AND >= 3 successful executions
+        - candidate: confidence >= 0.3 OR manually taught
+        - seed:      confidence < 0.3 (initial / auto-generated)
+        """
+        proc = self.get(procedure_id)
+        if not proc:
+            return "unknown"
+
+        # Check staleness first (30 days since last evidence)
+        last_evidence = proc.get("last_evidence_timestamp")
+        if last_evidence:
+            try:
+                from datetime import datetime
+
+                last_time = datetime.fromisoformat(last_evidence)
+                days_since = (datetime.utcnow() - last_time).days
+            except (ValueError, TypeError):
+                days_since = 0
+            if days_since >= 30:
+                self.db.update("procedures", procedure_id, {"trust_state": TrustState.STALE.value})
+                return TrustState.STALE.value
+
+        confidence = proc["confidence"]
+        success_count = proc["success_count"]
+        promotion_method = proc.get("promotion_method", "auto")
+        transferred_to = proc.get("transferred_to", [])
+
+        # validated: cross-agent transfer + high confidence
+        if confidence >= 0.85 and len(transferred_to) > 0:
+            new_state = TrustState.VALIDATED
+        # trusted: high confidence with sufficient successful executions
+        elif confidence >= 0.7 and success_count >= 3:
+            new_state = TrustState.TRUSTED
+        # candidate: moderate confidence or manually taught
+        elif confidence >= 0.3 or promotion_method == PromotionMethod.TAUGHT.value:
+            new_state = TrustState.CANDIDATE
+        # seed: low confidence auto-generated
+        else:
+            new_state = TrustState.SEED
+
+        self.db.update("procedures", procedure_id, {"trust_state": new_state.value})
+        return new_state.value
+
+    def get_evidence(
+        self, procedure_id: str, limit: int = 20
+    ) -> list[dict[str, Any]]:
+        """Retrieve evidence records for a procedure, newest first."""
+        return self.db.fetchall(
+            "SELECT * FROM procedure_evidence WHERE procedure_id = ? ORDER BY timestamp DESC LIMIT ?",
+            (procedure_id, limit),
+        )
+
+    def get_trust_summary(self, procedure_id: str) -> dict[str, Any]:
+        """Get a complete trust summary for a procedure."""
+        proc = self.get(procedure_id)
+        if not proc:
+            return {"error": "procedure not found"}
+        evidence = self.get_evidence(procedure_id)
+        return {
+            "procedure_id": procedure_id,
+            "trust_state": proc.get("trust_state", TrustState.SEED.value),
+            "confidence": proc["confidence"],
+            "success_count": proc["success_count"],
+            "failure_count": proc["failure_count"],
+            "promotion_method": proc.get("promotion_method"),
+            "last_evidence_timestamp": proc.get("last_evidence_timestamp"),
+            "evidence_count": len(evidence),
+            "recent_evidence": evidence[:5],
+        }
 
     def get_composable_pairs(self) -> list[tuple[dict, dict]]:
         """Find procedure pairs where A's postconditions match B's preconditions."""

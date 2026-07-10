@@ -177,6 +177,47 @@ TOOLS = [
         },
     ),
     Tool(
+        name="myelin_facts",
+        description="Query stored semantic facts for an agent. Returns matching facts with metadata.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "agent_id": {"type": "string"},
+                "key_prefix": {"type": "string", "description": "Filter by key prefix (e.g. 'user_')"},
+                "domain": {"type": "string"},
+                "limit": {"type": "integer", "default": 20},
+            },
+            "required": ["agent_id"],
+        },
+    ),
+    Tool(
+        name="myelin_forget",
+        description="Soft-delete a memory by ID. Marks as deleted rather than removing rows.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "memory_id": {"type": "string"},
+                "memory_type": {"type": "string", "enum": ["episode", "semantic", "procedure"], "default": "episode"},
+            },
+            "required": ["memory_id"],
+        },
+    ),
+    Tool(
+        name="myelin_memorize",
+        description="Store a durable semantic fact. Unlike myelin_observe (episodic), this stores a direct fact independent of any action.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "agent_id": {"type": "string", "description": "Agent this fact belongs to"},
+                "key": {"type": "string", "description": "Fact key (e.g. 'user_prefers_concise')"},
+                "value": {"type": "string", "description": "Fact value"},
+                "domain": {"type": "string", "description": "Optional domain context"},
+                "ttl_days": {"type": "integer", "description": "Optional expiry in days"},
+            },
+            "required": ["agent_id", "key", "value"],
+        },
+    ),
+    Tool(
         name="myelin_execute_procedure",
         description="Find the best matching learned procedure for a task. Returns step-by-step instructions with confidence.",
         inputSchema={
@@ -408,6 +449,21 @@ TOOLS = [
         },
     ),
     Tool(
+        name="myelin_update",
+        description="Update an existing memory (episodic observation or semantic fact) by ID.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "memory_id": {"type": "string", "description": "ID of the memory to update"},
+                "memory_type": {"type": "string", "enum": ["episode", "semantic"], "default": "episode", "description": "Which memory type to update"},
+                "content_text": {"type": "string", "description": "Updated content text (episode only)"},
+                "action": {"type": "string", "description": "Updated action (episode only)"},
+                "value": {"type": "string", "description": "Updated value (semantic fact only)"},
+            },
+            "required": ["memory_id"],
+        },
+    ),
+    Tool(
         name="myelin_visualize",
         description="Export the knowledge graph as Mermaid.js diagram or D3.js force-directed JSON. Make the brain visible.",
         inputSchema={
@@ -542,10 +598,14 @@ def create_server(
             "myelin_what_changed": handlers.what_changed,
             "myelin_entity_status": handlers.entity_status,
             "myelin_entities": handlers.entities_query,
+            "myelin_facts": handlers.facts,
+            "myelin_forget": handlers.forget,
+            "myelin_memorize": handlers.memorize,
             "myelin_transfer_export": handlers.transfer_export,
             "myelin_transfer_import": handlers.transfer_import,
             "myelin_transfer_discover": handlers.transfer_discover,
             "myelin_sleep": handlers.trigger_sleep,
+            "myelin_update": handlers.update,
             "myelin_visualize": handlers.visualize,
             "myelin_profile": handlers.profile,
         }

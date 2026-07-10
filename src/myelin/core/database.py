@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 import json
 import sqlite3
 import struct
@@ -22,8 +24,96 @@ def _deserialize_f32(blob: bytes, dim: int = 768) -> list[float]:
     return list(struct.unpack(f"{dim}f", blob))
 
 
+def _normalize_fts_token(token: str) -> str:
+    """NFKC-normalize a single token and FTS5-safe-quote it."""
+    import unicodedata
+    normalized = unicodedata.normalize("NFKC", token)
+    safe = normalized.replace('"', '""')
+    return f'"{safe}"'
+
+
+def _contains_injection(token: str) -> bool:
+    """Check a single normalized token for SQL injection patterns.
+
+    Must be called *before* the token is FTS-quoted so we catch
+    injection attempts in their raw form.
+    """
+    upper = token.upper()
+    for kw in ("DROP", "DELETE", "UPDATE", "INSERT", "ALTER", "CREATE",
+               "EXEC", "ATTACH", "PRAGMA", "REINDEX", "REPLACE", "VACUUM",
+               "UNION", ";", "/*", "*/"):
+        if kw in upper:
+            return True
+    # A standalone SQL comment marker is dangerous, but command-line flags
+    # such as ``--force`` are legitimate search text and are safely quoted
+    # before reaching FTS5.  Treat ``--`` as a comment only at token end or
+    # when followed by whitespace; tokenization normally removes whitespace,
+    # so the direct ``_contains_injection('--')`` guard remains useful.
+    if token == "--" or re.search(r"--\s", token):
+        return True
+    return False
+
+
+def _tokenize_fts_query(query: str) -> list[str]:
+    """Tokenize a query string into FTS5-safe tokens.
+
+    Splits on non-alphanumeric characters (except . _ / @ : + -).
+    Each token is NFKC-normalized, FTS5-safe-quoted, and validated
+    for injection. Short tokens (<3 chars) are dropped unless they
+    are the only token produced.
+    """
+    tokens: list[str] = []
+    current: list[str] = []
+    for char in query:
+        if char.isalnum() or char in "._/@:+-":
+            current.append(char)
+        elif current:
+            token = "".join(current)
+            if len(token) >= 3:
+                tokens.append(token)
+            current = []
+    if current:
+        token = "".join(current)
+        if len(token) >= 3 or not tokens:
+            tokens.append(token)
+
+    return tokens
+
+
+def build_fts_where(
+    tokens: list[str],
+    operator: str = "OR",
+    max_len: int = 200,
+) -> str:
+    """Build a parameterized FTS5 MATCH expression from token list.
+
+    Each token is NFKC-normalized, injection-scanned, and FTS5-safe-quoted.
+    Empty token lists produce a no-op sentinel. Total expression length
+    is capped at *max_len* characters (ValueError raised if exceeded).
+
+    *operator* is ``"OR"`` or ``"AND"``.
+    """
+    if not tokens:
+        return '"__myelin_no_match__"'
+
+    quoted: list[str] = []
+    for token in tokens:
+        if _contains_injection(token):
+            raise ValueError(
+                f"Rejected potential SQL injection in FTS token: {token!r}"
+            )
+        quoted.append(_normalize_fts_token(token))
+
+    expr = f" {operator} ".join(quoted)
+    if len(expr) > max_len:
+        raise ValueError(
+            f"FTS query expression too long ({len(expr)} chars, max {max_len})"
+        )
+    return expr
+
+
 def escape_fts_query(query: str) -> str:
-    """Convert user text into a safe FTS5 MATCH expression.
+    """Convert user text into a safe FTS5 MATCH expression (OR mode).
 
     Uses OR between tokens instead of AND so partial matches still return
     results. FTS5's default AND means a single missing stopword (e.g. "my",
@@ -34,28 +124,32 @@ def escape_fts_query(query: str) -> str:
     Tokens under 3 chars are treated as stopwords and dropped unless they're
     the only token.
     """
-    tokens: list[str] = []
-    current: list[str] = []
-    for char in query:
-        if char.isalnum() or char in "._/@:+-":
-            current.append(char)
-        elif current:
-            token = "".join(current)
-            if len(token) >= 3:
-                token = token.replace('"', '""')
-                tokens.append(f'"{token}"')
-            current = []
-    if current:
-        token = "".join(current)
-        if len(token) >= 3 or not tokens:
-            token = token.replace('"', '""')
-            tokens.append(f'"{token}"')
+    tokens = _tokenize_fts_query(query)
+    return build_fts_where(tokens, operator="OR")
 
-    if not tokens:
-        return '"__myelin_no_match__"'
 
-    # OR between tokens — any match is better than none, ranking handles the rest
-    return " OR ".join(tokens)
+def validate_where_clause(where: str | None) -> None:
+    """Validate that a WHERE clause fragment does not contain injection.
+
+    Checks for multi-statement, DDL/DML keywords, and comment markers.
+    Raises ValueError if dangerous patterns are detected.
+    """
+    if not where:
+        return
+    upper = where.upper()
+    dangerous = (";", "--", "/*", "*/")
+    for pattern in dangerous:
+        if pattern in where:
+            raise ValueError(
+                f"Rejected dangerous WHERE clause pattern {pattern!r}"
+            )
+    for kw in ("DROP", "DELETE", "UPDATE", "INSERT", "ALTER", "CREATE",
+               "EXEC", "ATTACH", "PRAGMA", "REINDEX", "REPLACE", "VACUUM",
+               "UNION"):
+        if kw in upper.split():
+            raise ValueError(
+                f"Rejected SQL keyword {kw!r} in WHERE clause"
+            )
 
 
 class Database:
@@ -194,7 +288,9 @@ class Database:
         where_params: tuple[Any, ...] = (),
     ) -> list[dict[str, Any]]:
         where_clause = f"AND ({where})" if where else ""
-        sql = f"""
+        if where:
+            validate_where_clause(where)
+        sql = f"""\
             SELECT t.*, rank
             FROM {fts_table} fts
             JOIN {table} t ON t.rowid = fts.rowid
