@@ -363,6 +363,9 @@ class ToolHandlers:
         if modifications:
             self.procedural.record_modification(procedure_id, modifications)
 
+        # Recalculate trust state based on accumulated evidence
+        trust_state = self.procedural.update_trust_state(procedure_id)
+
         proc = self.procedural.get(procedure_id)
         trust_level = (
             procedure_trust_level(
@@ -377,6 +380,7 @@ class ToolHandlers:
             "procedure_id": procedure_id,
             "new_confidence": new_confidence,
             "trust_level": trust_level,
+            "trust_state": trust_state,
             "recommendation": procedure_recommendation(trust_level)
             if trust_level != "unknown"
             else "procedure_not_found",
@@ -988,12 +992,14 @@ class ToolHandlers:
 
         now = datetime.datetime.utcnow()
 
+        # Check if fact already exists
         existing = self.db.fetchone(
             "SELECT id, value FROM semantic_facts WHERE agent_id = ? AND key = ? AND deleted_at IS NULL",
             (agent_id, key),
         )
 
         if existing:
+            # Update existing fact
             updates: dict[str, Any] = {"value": value, "access_count": 0}
             if domain is not None:
                 updates["domain"] = domain
@@ -1003,6 +1009,7 @@ class ToolHandlers:
             self.db.update("semantic_facts", existing["id"], updates)
             fact_id = existing["id"]
         else:
+            # Insert new fact
             fact_id = str(uuid.uuid4())
             fact = {
                 "id": fact_id,

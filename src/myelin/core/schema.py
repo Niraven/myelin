@@ -192,6 +192,26 @@ CREATE INDEX IF NOT EXISTS idx_procedures_source_agent ON procedures(source_agen
 CREATE INDEX IF NOT EXISTS idx_procedures_composite ON procedures(is_composite);
 
 -- ============================================================
+-- PROCEDURE EVIDENCE / TRUST LIFECYCLE
+-- Tracks each procedure execution, feedback, or approval event.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS procedure_evidence (
+    id TEXT PRIMARY KEY,
+    procedure_id TEXT NOT NULL,
+    source TEXT NOT NULL,                 -- 'execution', 'feedback', 'approval'
+    outcome TEXT NOT NULL,                -- 'success', 'failure', 'partial'
+    confidence_delta REAL NOT NULL DEFAULT 0.0,
+    episode_id TEXT,
+    timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (procedure_id) REFERENCES procedures(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_pe_procedure ON procedure_evidence(procedure_id);
+CREATE INDEX IF NOT EXISTS idx_pe_source ON procedure_evidence(source);
+CREATE INDEX IF NOT EXISTS idx_pe_timestamp ON procedure_evidence(timestamp);
+
+-- ============================================================
 -- V4: RECONSOLIDATION LOG
 -- Tracks every reconsolidation event with before/after snapshots.
 -- ============================================================
@@ -471,6 +491,7 @@ CREATE TRIGGER IF NOT EXISTS procedures_au AFTER UPDATE ON procedures BEGIN
     VALUES (new.rowid, new.name, new.description, new.trigger_pattern, new.domain);
 END;
 
+-- ============================================================
 -- SEMANTIC FACTS (myelin_memorize / myelin_facts)
 -- Durable key-value facts independent of episodes.
 -- ============================================================
@@ -634,6 +655,8 @@ MIGRATION_COLUMNS = {
         ("pe_count", "INTEGER DEFAULT 0"),
         ("execution_count", "INTEGER NOT NULL DEFAULT 0"),
         ("deleted_at", "TEXT"),
+        ("trust_state", "TEXT NOT NULL DEFAULT 'seed'"),
+        ("last_evidence_timestamp", "TEXT"),
     ],
     "learning_goals": [
         ("gap_type", "TEXT"),
