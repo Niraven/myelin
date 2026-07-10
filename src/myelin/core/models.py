@@ -62,6 +62,26 @@ class PromotionMethod(str, Enum):
     COMPOSED = "composed"
 
 
+class TrustState(str, Enum):
+    SEED = "seed"
+    CANDIDATE = "candidate"
+    TRUSTED = "trusted"
+    VALIDATED = "validated"
+    STALE = "stale"
+
+
+class EvidenceSource(str, Enum):
+    EXECUTION = "execution"
+    FEEDBACK = "feedback"
+    APPROVAL = "approval"
+
+
+class EvidenceOutcome(str, Enum):
+    SUCCESS = "success"
+    FAILURE = "failure"
+    PARTIAL = "partial"
+
+
 class StepType(str, Enum):
     CORE = "core"
     VARIANT = "variant"
@@ -217,6 +237,19 @@ class Procedure(BaseModel):
     tags: list[str] = Field(default_factory=list)
     created_at: str = Field(default_factory=_now_iso)
     updated_at: str = Field(default_factory=_now_iso)
+
+
+# ── Procedure Evidence / Trust Lifecycle ───────────────────────
+
+
+class ProcedureEvidence(BaseModel):
+    id: str = Field(default_factory=_new_id)
+    procedure_id: str
+    source: EvidenceSource
+    outcome: EvidenceOutcome
+    confidence_delta: float = 0.0
+    episode_id: str | None = None
+    timestamp: str = Field(default_factory=_now_iso)
 
 
 # ── Metacognition ──────────────────────────────────────────────

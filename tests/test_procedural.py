@@ -4,6 +4,7 @@ from myelin.core.models import (
     Procedure,
     ProcedureStatus,
     ProcedureStep,
+    PromotionMethod,
     StepType,
 )
 
@@ -169,3 +170,121 @@ def test_archive_procedure(procedural):
     procedural.archive(proc.id)
     retrieved = procedural.get(proc.id)
     assert retrieved["status"] == ProcedureStatus.ARCHIVED.value
+
+
+# ── Trust Lifecycle Tests ──────────────────────────────────────
+
+
+def test_initial_trust_state_is_seed(procedural):
+    """A newly created auto-generated procedure starts at seed trust state."""
+    proc = _make_procedure(confidence=0.2, status=ProcedureStatus.DRAFT)
+    procedural.store(proc)
+    state = procedural.update_trust_state(proc.id)
+    assert state == "seed"
+
+
+def test_candidate_trust_state_from_confidence(procedural):
+    """A procedure with confidence >= 0.3 becomes a candidate."""
+    proc = _make_procedure(confidence=0.5, status=ProcedureStatus.DRAFT)
+    procedural.store(proc)
+    state = procedural.update_trust_state(proc.id)
+    assert state == "candidate"
+
+
+def test_candidate_trust_state_from_taught(procedural):
+    """A manually taught procedure starts as candidate even at low confidence."""
+    proc = _make_procedure(
+        confidence=0.2,
+        status=ProcedureStatus.ACTIVE,
+        promotion_method=PromotionMethod.TAUGHT,
+    )
+    procedural.store(proc)
+    state = procedural.update_trust_state(proc.id)
+    assert state == "candidate"
+
+
+def test_trusted_requires_confidence_and_executions(procedural):
+    """Trusted requires confidence >= 0.7 and 3+ successful executions."""
+    proc = _make_procedure(
+        confidence=0.72,
+        status=ProcedureStatus.ACTIVE,
+        success_count=3,
+        failure_count=0,
+    )
+    procedural.store(proc)
+    state = procedural.update_trust_state(proc.id)
+    assert state == "trusted"
+
+
+def test_trusted_not_without_enough_successes(procedural):
+    """High confidence alone without 3+ successes should not be trusted."""
+    proc = _make_procedure(
+        confidence=0.72,
+        status=ProcedureStatus.ACTIVE,
+        success_count=1,
+        failure_count=0,
+    )
+    procedural.store(proc)
+    state = procedural.update_trust_state(proc.id)
+    assert state == "candidate"  # high conf but < 3 successes
+
+
+def test_validated_requires_transfer(procedural):
+    """Validated requires confidence >= 0.85 and cross-agent transfer."""
+    proc = _make_procedure(
+        confidence=0.88,
+        status=ProcedureStatus.ACTIVE,
+        success_count=3,
+        transferred_to=["agent-2"],
+    )
+    procedural.store(proc)
+    state = procedural.update_trust_state(proc.id)
+    assert state == "validated"
+
+
+def test_record_evidence_stores_procedure_evidence(procedural):
+    """record_evidence stores a row and returns an id."""
+    proc = _make_procedure(confidence=0.5)
+    procedural.store(proc)
+
+    ev_id = procedural.record_evidence(
+        procedure_id=proc.id,
+        source="feedback",
+        outcome="success",
+        confidence_delta=0.08,
+    )
+    assert ev_id is not None
+    rows = procedural.get_evidence(proc.id)
+    assert len(rows) == 1
+    assert rows[0]["source"] == "feedback"
+    assert rows[0]["outcome"] == "success"
+
+    # last_evidence_timestamp should have been set
+    retrieved = procedural.get(proc.id)
+    assert retrieved.get("last_evidence_timestamp") is not None
+
+
+def test_execution_automatically_records_evidence(procedural):
+    """record_execution should automatically create an evidence row."""
+    proc = _make_procedure(confidence=0.5, status=ProcedureStatus.ACTIVE)
+    procedural.store(proc)
+
+    procedural.record_execution(proc.id, success=True)
+
+    evidence = procedural.get_evidence(proc.id)
+    assert len(evidence) >= 1
+    assert evidence[0]["source"] == "execution"
+    assert evidence[0]["outcome"] == "success"
+
+
+def test_trust_summary_contains_all_fields(procedural):
+    """get_trust_summary returns a complete trust snapshot."""
+    proc = _make_procedure(confidence=0.5)
+    procedural.store(proc)
+    procedural.record_execution(proc.id, success=True)
+
+    summary = procedural.get_trust_summary(proc.id)
+    assert summary["trust_state"] in ("seed", "candidate")
+    assert "confidence" in summary
+    assert "evidence_count" in summary
+    assert summary["evidence_count"] >= 1

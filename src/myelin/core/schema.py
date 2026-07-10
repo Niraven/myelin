@@ -192,6 +192,26 @@ CREATE INDEX IF NOT EXISTS idx_procedures_source_agent ON procedures(source_agen
 CREATE INDEX IF NOT EXISTS idx_procedures_composite ON procedures(is_composite);
 
 -- ============================================================
+-- PROCEDURE EVIDENCE / TRUST LIFECYCLE
+-- Tracks each procedure execution, feedback, or approval event.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS procedure_evidence (
+    id TEXT PRIMARY KEY,
+    procedure_id TEXT NOT NULL,
+    source TEXT NOT NULL,                 -- 'execution', 'feedback', 'approval'
+    outcome TEXT NOT NULL,                -- 'success', 'failure', 'partial'
+    confidence_delta REAL NOT NULL DEFAULT 0.0,
+    episode_id TEXT,
+    timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (procedure_id) REFERENCES procedures(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_pe_procedure ON procedure_evidence(procedure_id);
+CREATE INDEX IF NOT EXISTS idx_pe_source ON procedure_evidence(source);
+CREATE INDEX IF NOT EXISTS idx_pe_timestamp ON procedure_evidence(timestamp);
+
+-- ============================================================
 -- V4: RECONSOLIDATION LOG
 -- Tracks every reconsolidation event with before/after snapshots.
 -- ============================================================
@@ -471,6 +491,27 @@ CREATE TRIGGER IF NOT EXISTS procedures_au AFTER UPDATE ON procedures BEGIN
     VALUES (new.rowid, new.name, new.description, new.trigger_pattern, new.domain);
 END;
 
+-- ============================================================
+-- SEMANTIC FACTS (myelin_memorize / myelin_facts)
+-- Durable key-value facts independent of episodes.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS semantic_facts (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL,
+    key TEXT NOT NULL,
+    value TEXT NOT NULL,
+    domain TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    expires_at TEXT,
+    access_count INTEGER NOT NULL DEFAULT 0,
+    deleted_at TEXT
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_semantic_facts_agent_key ON semantic_facts(agent_id, key);
+CREATE INDEX IF NOT EXISTS idx_semantic_facts_domain ON semantic_facts(domain);
+CREATE INDEX IF NOT EXISTS idx_semantic_facts_deleted ON semantic_facts(deleted_at);
+
 -- Profile facts
 CREATE TABLE IF NOT EXISTS profile_facts (
     id TEXT PRIMARY KEY,
@@ -598,12 +639,14 @@ MIGRATION_COLUMNS = {
         ("procedure_id", "TEXT"),
         ("is_exploration", "INTEGER NOT NULL DEFAULT 0"),
         ("intrinsic_reward", "REAL"),
+        ("deleted_at", "TEXT"),
     ],
     "semantic_nodes": [
         ("labile_until", "TEXT"),
         ("prediction_error", "REAL"),
         ("last_pe_raw", "REAL"),
         ("last_update_mode", "TEXT"),
+        ("deleted_at", "TEXT"),
     ],
     "procedures": [
         ("prediction_error", "REAL"),
@@ -611,6 +654,9 @@ MIGRATION_COLUMNS = {
         ("total_pe_sum", "REAL DEFAULT 0.0"),
         ("pe_count", "INTEGER DEFAULT 0"),
         ("execution_count", "INTEGER NOT NULL DEFAULT 0"),
+        ("deleted_at", "TEXT"),
+        ("trust_state", "TEXT NOT NULL DEFAULT 'seed'"),
+        ("last_evidence_timestamp", "TEXT"),
     ],
     "learning_goals": [
         ("gap_type", "TEXT"),
