@@ -6,6 +6,7 @@ non-blocking, and safe when unavailable.
 
 from __future__ import annotations
 
+import inspect
 import logging
 import time
 from typing import Any
@@ -54,6 +55,12 @@ class MyelinProvider(MemoryProvider):
         if self._handlers is None:
             return {"result": "Myelin not available.", "event_id": ""}
         result = await self._handlers.memorize(
+            agent_id=agent_id,
+            key=(metadata or {}).get("key", f"provider_{time.time_ns()}"),
+            value=content,
+            domain=(metadata or {}).get("domain"),
+            ttl_days=(metadata or {}).get("ttl_days"),
+        ) if "key" in inspect.signature(self._handlers.memorize).parameters else await self._handlers.memorize(
             agent_id=agent_id,
             fact=content,
             category=(metadata or {}).get("category", "fact"),
@@ -124,10 +131,18 @@ class MyelinProvider(MemoryProvider):
         """Update via myelin_update."""
         if self._handlers is None:
             return {"memory_id": memory_id}
-        await self._handlers.update_memory(
-            memory_id=memory_id,
-            new_text=text,
-        )
+        update_handler = getattr(self._handlers, "update", None)
+        if update_handler is not None and "memory_id" in inspect.signature(update_handler).parameters:
+            await update_handler(
+                memory_id=memory_id,
+                memory_type="semantic",
+                value=text,
+            )
+        else:
+            await self._handlers.update_memory(
+                memory_id=memory_id,
+                new_text=text,
+            )
         return {"memory_id": memory_id}
 
     async def delete(
@@ -139,7 +154,14 @@ class MyelinProvider(MemoryProvider):
         """Delete via myelin_forget."""
         if self._handlers is None:
             return {"memory_id": memory_id}
-        await self._handlers.forget(fact_id=memory_id)
+        forget_handler = getattr(self._handlers, "forget", None)
+        if forget_handler is not None and "memory_id" in inspect.signature(forget_handler).parameters:
+            await forget_handler(
+                memory_id=memory_id,
+                memory_type="semantic",
+            )
+        else:
+            await self._handlers.forget(fact_id=memory_id)
         return {"memory_id": memory_id}
 
     async def system_prompt_block(

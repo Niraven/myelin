@@ -60,6 +60,32 @@ class _MockHandler:
         }
 
 
+class _CurrentHandler:
+    """Matches the current semantic-fact handler API."""
+
+    def __init__(self) -> None:
+        self.facts: dict[str, dict] = {}
+
+    async def memorize(self, agent_id: str, key: str, value: str, domain=None, ttl_days=None) -> dict:
+        fact_id = f"semantic-{len(self.facts)}"
+        self.facts[fact_id] = {"agent_id": agent_id, "key": key, "value": value, "domain": domain}
+        return {"fact_id": fact_id}
+
+    async def update(self, memory_id: str, memory_type: str = "episode", content_text=None, action=None, value=None) -> dict:
+        self.facts[memory_id]["value"] = value
+        return {"success": True, "memory_id": memory_id, "memory_type": memory_type}
+
+    async def forget(self, memory_id: str, memory_type: str = "episode") -> dict:
+        self.facts.pop(memory_id, None)
+        return {"success": True, "memory_id": memory_id, "memory_type": memory_type}
+
+    async def context(self, **kwargs) -> dict:
+        return {"relevant_memories": []}
+
+    async def profile(self, agent_id: str = "hermes") -> dict:
+        return {"static_facts": [], "fact_count": 0, "category_breakdown": {}}
+
+
 class _FakeMem0Provider(MemoryProvider):
     """A simulated Mem0 MemoryProvider for testing dual-write/shadow-read."""
 
@@ -259,6 +285,19 @@ class TestMyelinProvider:
 # ---------------------------------------------------------------------------
 #  Tests: Mem0DualWriteAdapter — default-off behavior
 # ---------------------------------------------------------------------------
+
+
+class TestCurrentHandlerCompatibility:
+    async def test_current_handler_crud(self):
+        handler = _CurrentHandler()
+        provider = MyelinProvider(tool_handlers=handler)
+        result = await provider.add("current api", metadata={"domain": "test"})
+        memory_id = result["event_id"]
+        assert handler.facts[memory_id]["value"] == "current api"
+        await provider.update(memory_id, "updated")
+        assert handler.facts[memory_id]["value"] == "updated"
+        await provider.delete(memory_id)
+        assert memory_id not in handler.facts
 
 
 class TestMem0DualWriteDefaultOff:
