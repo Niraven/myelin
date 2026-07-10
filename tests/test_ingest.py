@@ -128,6 +128,50 @@ class TestObservation:
         assert len(rows) == 1
         assert rows[0]["processed"] == 1
 
+    def test_flush_marks_the_exact_staged_records_it_ingests(self, db, queue):
+        """A historical backlog row must be marked processed even if a newer episode exists."""
+        backlog = make_obs(idempotency_key="backlog")
+        db.insert("observation_queue", backlog.to_row())
+
+        db.execute(
+            """INSERT INTO episodes (
+                id, agent_id, session_id, timestamp, action, action_type,
+                success, content_text
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                "unrelated-future-episode",
+                "other-agent",
+                "other-session",
+                "2099-01-01T00:00:00+00:00",
+                "unrelated_action",
+                "tool_call",
+                1,
+                "An unrelated, future-dated episode.",
+            ),
+        )
+        db.commit()
+
+        queue.enqueue(make_obs(idempotency_key="current"))
+        queue.flush()
+
+        row = db.fetchone(
+            "SELECT processed FROM observation_queue WHERE id = ?", (backlog.id,)
+        )
+        assert row["processed"] == 1
+        assert db.fetchone("SELECT id FROM episodes WHERE id = ?", (backlog.id,))
+
+    def test_idle_flush_drains_persisted_staging_backlog(self, db, queue):
+        """The background poller must recover staged rows without a new producer event."""
+        backlog = make_obs(idempotency_key="idle-backlog")
+        db.insert("observation_queue", backlog.to_row())
+
+        assert queue.flush() == 1
+        row = db.fetchone(
+            "SELECT processed FROM observation_queue WHERE id = ?", (backlog.id,)
+        )
+        assert row["processed"] == 1
+        assert db.fetchone("SELECT id FROM episodes WHERE id = ?", (backlog.id,))
+
 
 class TestAgentPermissions:
     def test_default_is_public(self):
