@@ -23,37 +23,40 @@ class CognitiveProcess(ABC):
 
     async def run(self) -> dict[str, Any]:
         run = ProcessRun(process_name=self.name)
-        self.db.insert("process_runs", run.model_dump())
-
         try:
-            result = await self.execute()
-            from datetime import datetime
+            with self.db.transaction():
+                self.db.insert("process_runs", run.model_dump())
+                result = await self.execute()
+                from datetime import datetime
 
-            self.db.update(
-                "process_runs",
-                run.id,
-                {
-                    "completed_at": datetime.utcnow().isoformat(),
-                    "status": "completed",
-                    "items_processed": result.get("processed", 0),
-                    "items_created": result.get("created", 0),
-                    "items_modified": result.get("modified", 0),
-                    "details": result,
-                },
-            )
+                self.db.update(
+                    "process_runs",
+                    run.id,
+                    {
+                        "completed_at": datetime.utcnow().isoformat(),
+                        "status": "completed",
+                        "items_processed": result.get("processed", 0),
+                        "items_created": result.get("created", 0),
+                        "items_modified": result.get("modified", 0),
+                        "details": result,
+                    },
+                )
             return result
         except Exception as e:
-            from datetime import datetime
+            try:
+                from datetime import datetime
 
-            self.db.update(
-                "process_runs",
-                run.id,
-                {
-                    "completed_at": datetime.utcnow().isoformat(),
-                    "status": "failed",
-                    "error": str(e),
-                },
-            )
+                self.db.update(
+                    "process_runs",
+                    run.id,
+                    {
+                        "completed_at": datetime.utcnow().isoformat(),
+                        "status": "failed",
+                        "error": str(e),
+                    },
+                )
+            except Exception:
+                pass
             raise
 
     @abstractmethod

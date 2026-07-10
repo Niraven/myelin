@@ -67,12 +67,15 @@ class ImportanceComputer:
         return episode_scores
 
     def persist(self, db: Database, episode_scores: dict[str, float]) -> int:
-        """Write computed scores back to the episodes table."""
-        updated = 0
-        for episode_id, score in episode_scores.items():
-            db.update("episodes", episode_id, {"importance_score": score})
-            updated += 1
-        return updated
+        """Write computed scores back to the episodes table using batch update."""
+        if not episode_scores:
+            return 0
+        db.executemany(
+            "UPDATE episodes SET importance_score = ? WHERE id = ?",
+            [(score, eid) for eid, score in episode_scores.items()],
+        )
+        db.commit()
+        return len(episode_scores)
 
 
 class SleepCycle(CognitiveProcess):
