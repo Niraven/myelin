@@ -7,6 +7,7 @@ import time
 from typing import Any
 
 from ..core.database import Database
+from ..core.json_utils import deserialize_row
 from ..core.models import NodeType, SemanticNode
 
 
@@ -26,9 +27,7 @@ class SemanticMemory:
     def get(self, node_id: str) -> dict[str, Any] | None:
         row = self.db.fetchone("SELECT * FROM semantic_nodes WHERE id = ?", (node_id,))
         if row:
-            row["source_ids"] = json.loads(row["source_ids"])
-            row["access_times"] = json.loads(row["access_times"])
-            row["tags"] = json.loads(row["tags"])
+            deserialize_row(row)
         return row
 
     def access(self, node_id: str) -> None:
