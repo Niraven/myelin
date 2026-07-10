@@ -217,36 +217,18 @@ class ObservationQueue:
                 break
 
         if not batch:
-            return 0
+            drained = self._drain_staged(self.batch_size)
+            with self._lock:
+                self._stats["flushed"] += drained
+            return drained
 
+        rows = [obs.to_row() for obs in batch]
+        deduped = self._deduplicate(rows)
         with self.db.transaction():
-            rows = [obs.to_row() for obs in batch]
-            deduped = self._deduplicate(rows)
-
             for row in deduped:
                 self.db.insert("observation_queue", row)
 
-            self.db.conn.execute(
-                """INSERT OR IGNORE INTO episodes (
-                    id, agent_id, session_id, timestamp,
-                    action, action_type, input_context, output_result, success,
-                    content_text, tags, domain
-                ) SELECT
-                    id, agent_id, session_id, timestamp,
-                    action, action_type, input_context, output_result, success,
-                    content_text, tags, domain
-                FROM observation_queue
-                WHERE processed = 0
-                ORDER BY timestamp ASC
-                LIMIT ?
-                """,
-                (len(deduped),),
-            )
-            self.db.conn.execute(
-                "UPDATE observation_queue SET processed = 1 "
-                "WHERE processed = 0 AND id IN (SELECT id FROM episodes ORDER BY timestamp DESC LIMIT ?)",
-                (len(deduped),),
-            )
+        self._drain_staged(len(deduped))
 
         flushed = len(batch)
         with self._lock:
@@ -325,6 +307,51 @@ class ObservationQueue:
             CREATE INDEX IF NOT EXISTS idx_obs_queue_idempotency
             ON observation_queue(idempotency_key)
         """)
+
+    def _drain_staged(self, limit: int) -> int:
+        """Transactionally promote up to ``limit`` persisted observations to episodes."""
+        if limit <= 0:
+            return 0
+
+        with self.db.transaction():
+            # Select the exact staged IDs this transaction will drain. Never
+            # infer them from globally newest episodes: a concurrent or
+            # future-dated episode can otherwise leave a successfully ingested
+            # queue row permanently pending.
+            staged = self.db.fetchall(
+                """SELECT id FROM observation_queue
+                   WHERE processed = 0
+                   ORDER BY timestamp ASC
+                   LIMIT ?""",
+                (limit,),
+            )
+            staged_ids = [row["id"] for row in staged]
+            if not staged_ids:
+                return 0
+
+            placeholders = ",".join("?" for _ in staged_ids)
+            self.db.conn.execute(
+                f"""INSERT OR IGNORE INTO episodes (
+                    id, agent_id, session_id, timestamp,
+                    action, action_type, input_context, output_result, success,
+                    content_text, tags, domain
+                ) SELECT
+                    id, agent_id, session_id, timestamp,
+                    action, action_type, input_context, output_result, success,
+                    content_text, tags, domain
+                FROM observation_queue
+                WHERE id IN ({placeholders})""",
+                tuple(staged_ids),
+            )
+            result = self.db.conn.execute(
+                f"""UPDATE observation_queue
+                SET processed = 1
+                WHERE processed = 0
+                  AND id IN ({placeholders})
+                  AND id IN (SELECT id FROM episodes)""",
+                tuple(staged_ids),
+            )
+            return result.rowcount
 
     def _deduplicate(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Remove duplicates by idempotency_key within the batch.
