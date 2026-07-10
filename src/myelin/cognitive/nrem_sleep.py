@@ -150,17 +150,33 @@ class NREMPhase(CognitiveProcess):
             content = ep.get("content_text", "") or ""
             action = ep.get("action", "") or ""
 
-            # Extract entities from this episode
-            raw_entities = extract_entities_from_text(content, action)
-            if not raw_entities:
-                continue
+            # Pre-filter: if entity_mentions exist for this episode,
+            # query stored entity IDs directly instead of re-extracting
+            ep_id_escaped = ep_id  # sqlite3 param binding handles escaping
+            mention_check = self.db.fetchone(
+                "SELECT COUNT(*) as cnt FROM entity_mentions "
+                "WHERE source_id = ? AND source_type = 'episode'",
+                (ep_id,),
+            )
+            if mention_check and mention_check["cnt"] > 0:
+                mention_rows = self.db.fetchall(
+                    "SELECT DISTINCT entity_id FROM entity_mentions "
+                    "WHERE source_id = ? AND source_type = 'episode'",
+                    (ep_id,),
+                )
+                entity_ids = [r["entity_id"] for r in mention_rows]
+            else:
+                # Extract entities from this episode
+                raw_entities = extract_entities_from_text(content, action)
+                if not raw_entities:
+                    continue
 
-            # Resolve to entity IDs
-            entity_ids: list[str] = []
-            for raw in raw_entities:
-                found = self.entities.find_by_canonical(raw["canonical_name"], raw["entity_type"])
-                if found:
-                    entity_ids.append(found["id"])
+                # Resolve to entity IDs
+                entity_ids = []
+                for raw in raw_entities:
+                    found = self.entities.find_by_canonical(raw["canonical_name"], raw["entity_type"])
+                    if found:
+                        entity_ids.append(found["id"])
 
             # Hebbian: for every pair of entities co-occurring in this episode
             for i in range(len(entity_ids)):

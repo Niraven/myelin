@@ -149,3 +149,41 @@ class TestEntityStore:
         )
         results = store.search("docker")
         assert len(results) >= 1
+
+
+class TestEntityDedup:
+    """Entity dedup guard: process_episode should not duplicate mentions."""
+
+    def test_has_entity_mentions_returns_zero_for_new_episode(self, store):
+        assert store.has_entity_mentions("ep_new") == 0
+
+    def test_has_entity_mentions_returns_count_after_process(self, store):
+        store.process_episode("ep_test", content_text="Running npm test", action="npm test")
+        assert store.has_entity_mentions("ep_test") > 0
+
+    def test_process_episode_twice_returns_same_entity_ids(self, store):
+        ids1 = store.process_episode(
+            "ep_dedup", content_text="Running npm test after git pull", action="npm test"
+        )
+        ids2 = store.process_episode(
+            "ep_dedup", content_text="Running npm test after git pull", action="npm test"
+        )
+        assert ids1 == ids2
+
+    def test_process_episode_does_not_duplicate_mentions(self, store):
+        store.process_episode(
+            "ep_dup1", content_text="Running npm test", action="npm test"
+        )
+        count_after_first = store.has_entity_mentions("ep_dup1")
+        store.process_episode(
+            "ep_dup1", content_text="Running npm test", action="npm test"
+        )
+        count_after_second = store.has_entity_mentions("ep_dup1")
+        assert count_after_first == count_after_second
+
+    def test_different_episodes_independent(self, store):
+        """Two different episodes should not interfere."""
+        store.process_episode("ep_a", content_text="Running npm test", action="npm test")
+        store.process_episode("ep_b", content_text="Running git pull", action="git pull")
+        assert store.has_entity_mentions("ep_a") > 0
+        assert store.has_entity_mentions("ep_b") > 0
