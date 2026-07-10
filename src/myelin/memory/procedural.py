@@ -11,6 +11,7 @@ from ..core.activation import (
     bayesian_confidence_update,
 )
 from ..core.database import Database
+from ..core.json_utils import deserialize_row
 from ..core.models import Procedure, ProcedureStatus, PromotionMethod
 
 
@@ -31,20 +32,7 @@ class ProceduralMemory:
     def get(self, procedure_id: str) -> dict[str, Any] | None:
         row = self.db.fetchone("SELECT * FROM procedures WHERE id = ?", (procedure_id,))
         if row:
-            row = dict(row)
-            for field in (
-                "steps",
-                "preconditions",
-                "postconditions",
-                "source_episodes",
-                "component_procedures",
-                "parent_procedures",
-                "transferred_to",
-                "access_times",
-                "tags",
-            ):
-                if isinstance(row.get(field), str):
-                    row[field] = json.loads(row[field])
+            deserialize_row(row)
         return row
 
     def find_matching(

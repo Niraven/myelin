@@ -15,11 +15,11 @@ faster for local deployments.
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from ..core.activation import base_level_activation
 from ..core.database import Database
+from ..core.json_utils import json_safe_loads
 from ..knowledge.entities import EntityStore, extract_entities_from_text
 from ..knowledge.graph import KnowledgeGraph
 from ..knowledge.temporal import TemporalIndex
@@ -278,17 +278,8 @@ class MultiSignalRetriever:
     def _compute_activation_score(self, candidate: dict[str, Any]) -> float:
         """Score based on ACT-R base-level activation."""
         access_times_raw = candidate.get("access_times", "[]")
-        if isinstance(access_times_raw, str):
-            try:
-                access_times = json.loads(access_times_raw)
-            except (json.JSONDecodeError, TypeError):
-                access_times = []
-        elif isinstance(access_times_raw, list):
-            access_times = access_times_raw
-        else:
-            access_times = []
-
-        if not access_times:
+        access_times = json_safe_loads(access_times_raw)
+        if not isinstance(access_times, list) or not access_times:
             return 0.0
 
         activation = base_level_activation(access_times)
