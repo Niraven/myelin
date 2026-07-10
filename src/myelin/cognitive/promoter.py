@@ -145,12 +145,14 @@ class Promoter(CognitiveProcess):
                 sessions=sessions,
             )
             if procedure:
+                self.db.commit()
                 self.procedural.store(procedure)
                 created += 1
 
                 # Mark episodes as consolidated
                 cluster_id = procedure.id[:16]
                 self.episodic.mark_consolidated(episode_ids, cluster_id)
+                self.db.commit()
 
         return {"processed": processed, "created": created}
 
@@ -221,15 +223,20 @@ class Promoter(CognitiveProcess):
         return dict(sessions)
 
     def _has_existing_procedure(self, episode_ids: list[str]) -> bool:
-        """Check if we already have a procedure from overlapping episodes."""
-        for eid in episode_ids[:5]:
-            existing = self.db.fetchone(
-                "SELECT id FROM procedures WHERE source_episodes LIKE ?",
-                (f"%{eid}%",),
-            )
-            if existing:
-                return True
-        return False
+        """Check if we already have a procedure from overlapping episodes.
+
+        Uses a single query with OR conditions instead of N+1 LIKE queries.
+        """
+        if not episode_ids:
+            return False
+        sample = min(len(episode_ids), 5)
+        conditions = " OR ".join("source_episodes LIKE ?" for _ in range(sample))
+        params = tuple(f"%{episode_ids[i]}%" for i in range(sample))
+        existing = self.db.fetchone(
+            f"SELECT id FROM procedures WHERE {conditions} LIMIT 1",
+            params,
+        )
+        return existing is not None
 
     def _build_procedure(
         self,

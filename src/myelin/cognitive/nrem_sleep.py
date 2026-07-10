@@ -257,8 +257,13 @@ class NREMPhase(CognitiveProcess):
             if not cluster:
                 continue
             cluster_id = _new_id()
-            for ep in cluster:
-                self.db.update("episodes", ep["id"], {"cluster_id": cluster_id})
+            # Batch update all episodes in this cluster with one SQL call
+            ids = [ep["id"] for ep in cluster]
+            placeholders = ",".join("?" for _ in ids)
+            self.db.execute(
+                f"UPDATE episodes SET cluster_id = ? WHERE id IN ({placeholders})",
+                (cluster_id, *ids),
+            )
 
         return clusters
 

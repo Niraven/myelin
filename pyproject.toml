@@ -72,6 +72,9 @@ ignore = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = [
+    "slow: marks tests as slow (performance benchmarks, integration)",
+]
 
 [tool.mypy]
 python_version = "3.11"
