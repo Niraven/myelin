@@ -424,3 +424,61 @@ class ProcessRun(BaseModel):
     status: str = "running"
     error: str | None = None
     details: dict[str, Any] | None = None
+
+
+# ── Provenance ─────────────────────────────────────────────────
+
+
+class RetrievalProvenance(BaseModel):
+    """Durable provenance metadata attached to every retrieved result.
+
+    Carries the lineage and retrieval-time signals so consumers can audit
+    where a result came from, how it was scored, and when it was fetched.
+    All fields are JSON-serialisable by design.
+    """
+
+    source_id: str
+    """The primary ID of the source memory (episode, semantic node, procedure)."""
+
+    source_type: str
+    """'episode', 'semantic', or 'procedure'."""
+
+    source_agent: str
+    """Agent that created the source memory, or 'unknown'."""
+
+    domain: str | None = None
+    """Optional domain the source memory is scoped to."""
+
+    timestamp: str | None = None
+    """ISO-8601 timestamp of when the source memory was created / recorded."""
+
+    retrieved_at: str = Field(default_factory=_now_iso)
+    """ISO-8601 timestamp of when this retrieval occurred."""
+
+    retrieval_signals: dict[str, float] = Field(default_factory=dict)
+    """Per-signal scores used during retrieval (text, vector, entity, temporal, activation, importance)."""
+
+    composite_score: float = 0.0
+    """Fused multi-signal composite score at retrieval time."""
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return a plain dict safe for JSON serialisation and dict storage."""
+        return self.model_dump()
+
+    @classmethod
+    def from_result(
+        cls, result: dict[str, Any], retrieved_at: str | None = None
+    ) -> RetrievalProvenance:
+        """Build provenance from a raw retriever result dict (non-destructive)."""
+        import datetime
+
+        return cls(
+            source_id=result.get("id", ""),
+            source_type=str(result.get("_source_type", "unknown")),
+            source_agent=str(result.get("source_agent", "unknown")),
+            domain=result.get("domain"),
+            timestamp=result.get("timestamp") or result.get("created_at"),
+            retrieved_at=retrieved_at or datetime.datetime.utcnow().isoformat(),
+            retrieval_signals=result.get("_scores", {}),
+            composite_score=float(result.get("_composite_score", 0.0)),
+        )

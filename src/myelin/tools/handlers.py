@@ -260,25 +260,53 @@ class ToolHandlers:
     ) -> dict[str, Any]:
         types = memory_types or ["episodic", "semantic", "procedural"]
         query_vec = self.embedder.embed(query) or None
+
+        import datetime
+
+        retrieved_at = datetime.datetime.utcnow().isoformat()
+
+        def _attach_provenance(
+            entries: list[dict[str, Any]],
+            source_type: str,
+        ) -> list[dict[str, Any]]:
+            for e in entries:
+                if "_provenance" not in e:
+                    from ..core.models import RetrievalProvenance
+
+                    e["_provenance"] = RetrievalProvenance(
+                        source_id=e.get("id", ""),
+                        source_type=source_type,
+                        source_agent=str(e.get("agent_id") or e.get("source_agent", "unknown")),
+                        domain=e.get("domain"),
+                        timestamp=e.get("timestamp") or e.get("created_at"),
+                        retrieved_at=retrieved_at,
+                        retrieval_signals={},
+                        composite_score=0.0,
+                    ).to_dict()
+            return entries
+
         results: dict[str, list] = {}
 
         if "episodic" in types:
             episodes = self.episodic.search_hybrid(query, query_vec, limit=limit)
             for ep in episodes:
                 self.episodic.access(ep["id"])
-            results["episodes"] = episodes
+            results["episodes"] = _attach_provenance(episodes, "episode")
 
         if "semantic" in types:
             nodes = self.semantic.search_hybrid(query, query_vec, limit=limit)
             for node in nodes:
                 self.semantic.access(node["id"])
-            results["semantic"] = [n for n in nodes if n.get("confidence", 0) >= min_confidence]
+            results["semantic"] = _attach_provenance(
+                [n for n in nodes if n.get("confidence", 0) >= min_confidence],
+                "semantic",
+            )
 
         if "procedural" in types:
             procedures = self.procedural.find_matching(
                 query, query_vec, limit=limit, min_confidence=min_confidence
             )
-            results["procedures"] = procedures
+            results["procedures"] = _attach_provenance(procedures, "procedure")
 
         return {
             "query": query,
@@ -520,8 +548,15 @@ class ToolHandlers:
         synthesize: bool = False,
         agent_ids: list[str] | None = None,
         agent_id: str | None = None,
+        min_confidence: float | None = None,
+        max_age_hours: float | None = None,
     ) -> dict[str, Any]:
-        """Multi-signal retrieval across all memory types."""
+        """Multi-signal retrieval across all memory types.
+
+        Parameters beyond ``query`` and ``limit`` are passed through
+        to the underlying ``MultiSignalRetriever``.  Each result carries
+        a ``provenance`` dict with source lineage and retrieval signals.
+        """
         query_vec = self.embedder.embed(query) or None
         results = self.retriever.retrieve(
             query,
@@ -531,6 +566,8 @@ class ToolHandlers:
             weights=weights,
             agent_ids=agent_ids,
             querying_agent_id=agent_id,
+            min_confidence=min_confidence,
+            max_age_hours=max_age_hours,
         )
         raw_results = [
             {
@@ -540,6 +577,7 @@ class ToolHandlers:
                 "composite_score": r.get("_composite_score", 0),
                 "scores": r.get("_scores", {}),
                 "source_agent": r.get("source_agent", "unknown"),
+                "provenance": r.get("_provenance"),
             }
             for r in results
         ]
