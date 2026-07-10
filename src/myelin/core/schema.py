@@ -471,6 +471,26 @@ CREATE TRIGGER IF NOT EXISTS procedures_au AFTER UPDATE ON procedures BEGIN
     VALUES (new.rowid, new.name, new.description, new.trigger_pattern, new.domain);
 END;
 
+-- SEMANTIC FACTS (myelin_memorize / myelin_facts)
+-- Durable key-value facts independent of episodes.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS semantic_facts (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL,
+    key TEXT NOT NULL,
+    value TEXT NOT NULL,
+    domain TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    expires_at TEXT,
+    access_count INTEGER NOT NULL DEFAULT 0,
+    deleted_at TEXT
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_semantic_facts_agent_key ON semantic_facts(agent_id, key);
+CREATE INDEX IF NOT EXISTS idx_semantic_facts_domain ON semantic_facts(domain);
+CREATE INDEX IF NOT EXISTS idx_semantic_facts_deleted ON semantic_facts(deleted_at);
+
 -- Profile facts
 CREATE TABLE IF NOT EXISTS profile_facts (
     id TEXT PRIMARY KEY,
@@ -598,12 +618,14 @@ MIGRATION_COLUMNS = {
         ("procedure_id", "TEXT"),
         ("is_exploration", "INTEGER NOT NULL DEFAULT 0"),
         ("intrinsic_reward", "REAL"),
+        ("deleted_at", "TEXT"),
     ],
     "semantic_nodes": [
         ("labile_until", "TEXT"),
         ("prediction_error", "REAL"),
         ("last_pe_raw", "REAL"),
         ("last_update_mode", "TEXT"),
+        ("deleted_at", "TEXT"),
     ],
     "procedures": [
         ("prediction_error", "REAL"),
@@ -611,6 +633,7 @@ MIGRATION_COLUMNS = {
         ("total_pe_sum", "REAL DEFAULT 0.0"),
         ("pe_count", "INTEGER DEFAULT 0"),
         ("execution_count", "INTEGER NOT NULL DEFAULT 0"),
+        ("deleted_at", "TEXT"),
     ],
     "learning_goals": [
         ("gap_type", "TEXT"),
