@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 import json
 import sqlite3
 import struct
@@ -39,9 +41,16 @@ def _contains_injection(token: str) -> bool:
     upper = token.upper()
     for kw in ("DROP", "DELETE", "UPDATE", "INSERT", "ALTER", "CREATE",
                "EXEC", "ATTACH", "PRAGMA", "REINDEX", "REPLACE", "VACUUM",
-               "UNION", "--", ";", "/*", "*/"):
+               "UNION", ";", "/*", "*/"):
         if kw in upper:
             return True
+    # A standalone SQL comment marker is dangerous, but command-line flags
+    # such as ``--force`` are legitimate search text and are safely quoted
+    # before reaching FTS5.  Treat ``--`` as a comment only at token end or
+    # when followed by whitespace; tokenization normally removes whitespace,
+    # so the direct ``_contains_injection('--')`` guard remains useful.
+    if token == "--" or re.search(r"--\s", token):
+        return True
     return False
 
 
