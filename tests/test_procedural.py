@@ -51,6 +51,7 @@ def test_bayesian_confidence_on_success(procedural):
     retrieved = procedural.get(proc.id)
     assert retrieved["success_count"] == 1
     assert retrieved["failure_count"] == 0
+    assert retrieved["execution_count"] == 1
 
 
 def test_bayesian_confidence_on_failure(procedural):
