@@ -95,6 +95,7 @@ class ProceduralMemory:
 
         success_count = proc["success_count"] + (1 if success else 0)
         failure_count = proc["failure_count"] + (0 if success else 1)
+        execution_count = proc["execution_count"] + 1
         total = success_count + failure_count
         actual_rate = success_count / total if total > 0 else None
 
@@ -105,6 +106,7 @@ class ProceduralMemory:
                 "confidence": new_confidence,
                 "success_count": success_count,
                 "failure_count": failure_count,
+                "execution_count": execution_count,
                 "activation_score": new_activation,
                 "access_times": access_times,
                 "actual_success_rate": actual_rate,
