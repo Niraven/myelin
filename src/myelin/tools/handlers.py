@@ -1025,8 +1025,8 @@ class ToolHandlers:
         ttl_days: int | None = None,
     ) -> dict[str, Any]:
         """Store a durable semantic fact (key-value). Upserts if agent_id+key already exists."""
-        import uuid
         import datetime
+        import uuid
 
         now = datetime.datetime.utcnow()
 
@@ -1125,7 +1125,10 @@ class ToolHandlers:
                 (memory_id,),
             )
             if not existing:
-                return {"success": False, "error": f"Episode {memory_id} not found or already deleted"}
+                return {
+                    "success": False,
+                    "error": f"Episode {memory_id} not found or already deleted",
+                }
             self.db.update("episodes", memory_id, {"deleted_at": now})
 
         elif memory_type == "semantic":
@@ -1134,7 +1137,10 @@ class ToolHandlers:
                 (memory_id,),
             )
             if not existing:
-                return {"success": False, "error": f"Semantic fact {memory_id} not found or already deleted"}
+                return {
+                    "success": False,
+                    "error": f"Semantic fact {memory_id} not found or already deleted",
+                }
             self.db.update("semantic_facts", memory_id, {"deleted_at": now})
 
         elif memory_type == "procedure":
@@ -1178,6 +1184,7 @@ class ToolHandlers:
         rows = self.db.fetchall(sql, tuple(params))
 
         import datetime
+
         now = datetime.datetime.utcnow()
 
         facts_list = []
@@ -1189,16 +1196,18 @@ class ToolHandlers:
                     expired = expiry < now
                 except (ValueError, TypeError):
                     pass
-            facts_list.append({
-                "id": row["id"],
-                "key": row["key"],
-                "value": row["value"],
-                "domain": row.get("domain"),
-                "created_at": row.get("created_at"),
-                "expired": expired,
-                "expires_at": row.get("expires_at"),
-                "access_count": row.get("access_count", 0),
-            })
+            facts_list.append(
+                {
+                    "id": row["id"],
+                    "key": row["key"],
+                    "value": row["value"],
+                    "domain": row.get("domain"),
+                    "created_at": row.get("created_at"),
+                    "expired": expired,
+                    "expires_at": row.get("expires_at"),
+                    "access_count": row.get("access_count", 0),
+                }
+            )
 
         return {"agent_id": agent_id, "facts": facts_list, "count": len(facts_list)}
 

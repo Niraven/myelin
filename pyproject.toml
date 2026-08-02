@@ -82,3 +82,4 @@ warn_return_any = true
 warn_unused_ignores = true
 disallow_untyped_defs = false
 disallow_any_generics = false
+no_site_packages = true

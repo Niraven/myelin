@@ -171,13 +171,9 @@ class TestEntityDedup:
         assert ids1 == ids2
 
     def test_process_episode_does_not_duplicate_mentions(self, store):
-        store.process_episode(
-            "ep_dup1", content_text="Running npm test", action="npm test"
-        )
+        store.process_episode("ep_dup1", content_text="Running npm test", action="npm test")
         count_after_first = store.has_entity_mentions("ep_dup1")
-        store.process_episode(
-            "ep_dup1", content_text="Running npm test", action="npm test"
-        )
+        store.process_episode("ep_dup1", content_text="Running npm test", action="npm test")
         count_after_second = store.has_entity_mentions("ep_dup1")
         assert count_after_first == count_after_second
 

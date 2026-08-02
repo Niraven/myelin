@@ -21,10 +21,10 @@ from .tools.handlers import ToolHandlers
 
 try:
     from benchmarks.ci_subset import run_ci_subset
-    from benchmarks.nightly import run_nightly
+    from benchmarks.locomo.harness import evaluate_locomo
     from benchmarks.longmemeval.dataset import LongMemEvalDataset
     from benchmarks.longmemeval.harness import evaluate
-    from benchmarks.locomo.harness import evaluate_locomo
+    from benchmarks.nightly import run_nightly
 
     _EVAL_AVAILABLE = True
 except ImportError:
@@ -239,15 +239,15 @@ def main() -> None:
             print(json.dumps(report, indent=2))
         return
 
-    results = asyncio.run(_run(args))
+    benchmarks = asyncio.run(_run(args))
 
     if args.json:
-        print(json.dumps({"benchmarks": results}, indent=2))
+        print(json.dumps({"benchmarks": benchmarks}, indent=2))
         return
 
     print("Myelin local benchmark")
     print("======================")
-    for result in results:
+    for result in benchmarks:
         print(json.dumps(result, indent=2))
 
 

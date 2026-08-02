@@ -152,7 +152,6 @@ class NREMPhase(CognitiveProcess):
 
             # Pre-filter: if entity_mentions exist for this episode,
             # query stored entity IDs directly instead of re-extracting
-            ep_id_escaped = ep_id  # sqlite3 param binding handles escaping
             mention_check = self.db.fetchone(
                 "SELECT COUNT(*) as cnt FROM entity_mentions "
                 "WHERE source_id = ? AND source_type = 'episode'",
@@ -174,7 +173,9 @@ class NREMPhase(CognitiveProcess):
                 # Resolve to entity IDs
                 entity_ids = []
                 for raw in raw_entities:
-                    found = self.entities.find_by_canonical(raw["canonical_name"], raw["entity_type"])
+                    found = self.entities.find_by_canonical(
+                        raw["canonical_name"], raw["entity_type"]
+                    )
                     if found:
                         entity_ids.append(found["id"])
 

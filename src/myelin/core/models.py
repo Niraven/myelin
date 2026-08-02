@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
@@ -496,7 +496,7 @@ class RetrievalProvenance(BaseModel):
 
     def to_dict(self) -> dict[str, Any]:
         """Return a plain dict safe for JSON serialisation and dict storage."""
-        return self.model_dump()
+        return cast(dict[str, Any], self.model_dump())
 
     @classmethod
     def from_result(

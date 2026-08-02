@@ -7,23 +7,23 @@ Covers:
 4. NREM _cluster_episodes batch update correctness
 5. ImportanceComputer.persist batch update correctness
 """
-import sys
+
 import tempfile
 import time
 from pathlib import Path
 
 import pytest
 
+from myelin.cognitive.nrem_sleep import NREMPhase
+from myelin.cognitive.promoter import Promoter
+from myelin.cognitive.sleep import ImportanceComputer
 from myelin.core.database import Database
-from myelin.core.models import ActionType, Episode, Procedure, ProcedureStep, StepType, ProcedureStatus
+from myelin.core.models import ActionType, Episode, Procedure, ProcedureStep, StepType
 from myelin.memory.episodic import EpisodicMemory
 from myelin.memory.procedural import ProceduralMemory
-from myelin.cognitive.promoter import Promoter
-from myelin.cognitive.nrem_sleep import NREMPhase
-from myelin.cognitive.sleep import ImportanceComputer
-
 
 # ── Helpers ─────────────────────────────────────────────────────
+
 
 def _make_episodes(db: Database, count: int, sessions: int) -> list[dict]:
     """Create a deterministic set of episodes."""
@@ -32,7 +32,7 @@ def _make_episodes(db: Database, count: int, sessions: int) -> list[dict]:
     created = []
     for i in range(sessions):
         sid = f"ses_{i}"
-        for j, action in enumerate(actions):
+        for action in actions:
             ep = Episode(
                 agent_id="test-agent",
                 session_id=sid,
@@ -49,6 +49,7 @@ def _make_episodes(db: Database, count: int, sessions: int) -> list[dict]:
 
 
 # ── Test: _has_existing_procedure single-query optimization ───
+
 
 class TestHasExistingProcedure:
     def test_no_procedures(self, tmp_db):
@@ -93,6 +94,7 @@ class TestHasExistingProcedure:
 
 # ── Test: Promoter end-to-end ─────────────────────────────────
 
+
 class TestPromoterEndToEnd:
     def test_promoter_creates_procedure(self, tmp_db, episodic):
         """Promoter should create a procedure from repeated action patterns."""
@@ -115,6 +117,7 @@ class TestPromoterEndToEnd:
         tmp_db.commit()
 
         import asyncio
+
         result = asyncio.run(prom.execute())
         assert result.get("created", 0) >= 1, f"Expected at least 1 procedure, got {result}"
 
@@ -137,12 +140,14 @@ class TestPromoterEndToEnd:
             episodic.record(ep)
 
         import asyncio
+
         result = asyncio.run(prom.execute())
         # Should skip — only 1 session (too few to cluster)
         assert result.get("processed", 0) == 0 and result.get("created", 0) == 0
 
 
 # ── Test: NREM batch cluster update correctness ──────────────
+
 
 class TestNremBatchUpdate:
     def test_batch_cluster_update(self, tmp_db, episodic):
@@ -165,20 +170,22 @@ class TestNremBatchUpdate:
 
         # Run clustering
         recent_eps = episodic.get_recent(limit=500)
-        clusters = nrem._cluster_episodes(recent_eps)
+        nrem._cluster_episodes(recent_eps)
 
         # All episodes should have a cluster_id set
         for ep in recent_eps:
             updated = tmp_db.fetchone("SELECT cluster_id FROM episodes WHERE id = ?", (ep["id"],))
-            assert updated and updated.get("cluster_id"), f"Episode {ep['id']} should have cluster_id"
+            assert updated and updated.get("cluster_id"), (
+                f"Episode {ep['id']} should have cluster_id"
+            )
 
 
 # ── Test: ImportanceComputer.persist batch update correctness ─
 
+
 class TestImportancePersist:
     def test_batch_importance_update(self, tmp_db, episodic):
         """ImportanceComputer.persist should correctly update all episodes."""
-        import asyncio
 
         # Create episodes
         for i in range(10):
@@ -198,7 +205,6 @@ class TestImportancePersist:
         all_eps = tmp_db.fetchall("SELECT * FROM episodes")
 
         # Test ImportanceComputer with just domain grouping
-        from myelin.cognitive.importance import score_clusters, ImportanceWeights
         episode_scores = {}
         for ep in all_eps:
             episode_scores[ep["id"]] = 0.75
@@ -219,6 +225,7 @@ class TestImportancePersist:
 
 # ── Performance regression: 1000 episodes under 5s ────────────
 
+
 @pytest.mark.slow
 class TestPromoterPerformanceRegression:
     """Performance regression: full session-end loop on 1000 episodes must complete under 5s.
@@ -229,6 +236,7 @@ class TestPromoterPerformanceRegression:
     def test_full_loop_under_5s(self):
         """Full cognitive loop on 1000 deterministic episodes must complete under 5s."""
         import asyncio
+
         from myelin.session import Session
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -258,12 +266,11 @@ class TestPromoterPerformanceRegression:
             session.orchestrator._write_count = 100
 
             t0 = time.perf_counter()
-            result = asyncio.run(session.end())
+            asyncio.run(session.end())
             elapsed = time.perf_counter() - t0
 
             db.close()
 
             assert elapsed < 5.0, (
-                f"Full cognitive loop took {elapsed:.3f}s, "
-                f"expected < 5.0s for 1000 episodes"
+                f"Full cognitive loop took {elapsed:.3f}s, expected < 5.0s for 1000 episodes"
             )

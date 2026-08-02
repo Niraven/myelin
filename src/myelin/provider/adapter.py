@@ -54,17 +54,21 @@ class MyelinProvider(MemoryProvider):
         """Store a fact via myelin_memorize (profile_facts upsert)."""
         if self._handlers is None:
             return {"result": "Myelin not available.", "event_id": ""}
-        result = await self._handlers.memorize(
-            agent_id=agent_id,
-            key=(metadata or {}).get("key", f"provider_{time.time_ns()}"),
-            value=content,
-            domain=(metadata or {}).get("domain"),
-            ttl_days=(metadata or {}).get("ttl_days"),
-        ) if "key" in inspect.signature(self._handlers.memorize).parameters else await self._handlers.memorize(
-            agent_id=agent_id,
-            fact=content,
-            category=(metadata or {}).get("category", "fact"),
-            confidence=float((metadata or {}).get("confidence", 0.6)),
+        result = (
+            await self._handlers.memorize(
+                agent_id=agent_id,
+                key=(metadata or {}).get("key", f"provider_{time.time_ns()}"),
+                value=content,
+                domain=(metadata or {}).get("domain"),
+                ttl_days=(metadata or {}).get("ttl_days"),
+            )
+            if "key" in inspect.signature(self._handlers.memorize).parameters
+            else await self._handlers.memorize(
+                agent_id=agent_id,
+                fact=content,
+                category=(metadata or {}).get("category", "fact"),
+                confidence=float((metadata or {}).get("confidence", 0.6)),
+            )
         )
         return {
             "result": "Fact stored.",
@@ -156,7 +160,10 @@ class MyelinProvider(MemoryProvider):
         if self._handlers is None:
             return {"memory_id": memory_id}
         update_handler = getattr(self._handlers, "update", None)
-        if update_handler is not None and "memory_id" in inspect.signature(update_handler).parameters:
+        if (
+            update_handler is not None
+            and "memory_id" in inspect.signature(update_handler).parameters
+        ):
             await update_handler(
                 memory_id=memory_id,
                 memory_type="semantic",
@@ -179,7 +186,10 @@ class MyelinProvider(MemoryProvider):
         if self._handlers is None:
             return {"memory_id": memory_id}
         forget_handler = getattr(self._handlers, "forget", None)
-        if forget_handler is not None and "memory_id" in inspect.signature(forget_handler).parameters:
+        if (
+            forget_handler is not None
+            and "memory_id" in inspect.signature(forget_handler).parameters
+        ):
             await forget_handler(
                 memory_id=memory_id,
                 memory_type="semantic",
