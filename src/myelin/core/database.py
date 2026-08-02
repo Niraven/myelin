@@ -33,38 +33,17 @@ def _normalize_fts_token(token: str) -> str:
 
 
 def _contains_injection(token: str) -> bool:
-    """Check a single normalized token for SQL injection patterns.
+    """Reject structural query markers while allowing literal SQL words.
 
-    Must be called *before* the token is FTS-quoted so we catch
-    injection attempts in their raw form.
+    FTS terms are double-quoted and passed through a ``MATCH ?`` parameter, so
+    words such as ``create`` and ``update`` are data, not executable SQL. Keep
+    structural markers blocked as defense in depth for direct callers.
     """
-    upper = token.upper()
-    for kw in (
-        "DROP",
-        "DELETE",
-        "UPDATE",
-        "INSERT",
-        "ALTER",
-        "CREATE",
-        "EXEC",
-        "ATTACH",
-        "PRAGMA",
-        "REINDEX",
-        "REPLACE",
-        "VACUUM",
-        "UNION",
-        ";",
-        "/*",
-        "*/",
-    ):
-        if kw in upper:
-            return True
-    # A standalone SQL comment marker is dangerous, but command-line flags
-    # such as ``--force`` are legitimate search text and are safely quoted
-    # before reaching FTS5.  Treat ``--`` as a comment only at token end or
-    # when followed by whitespace; tokenization normally removes whitespace,
-    # so the direct ``_contains_injection('--')`` guard remains useful.
-    return bool(token == "--" or re.search(r"--\s", token))
+    if any(marker in token for marker in (";", "/*", "*/")):
+        return True
+    # Command-line flags such as ``--force`` are legitimate search text. Treat
+    # ``--`` as a comment only by itself or when followed by whitespace.
+    return token == "--" or bool(re.search(r"--\s", token))
 
 
 def _tokenize_fts_query(query: str) -> list[str]:
