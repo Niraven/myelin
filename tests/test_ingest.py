@@ -1,6 +1,9 @@
 """Tests for ObservationQueue — multi-agent ingest with backpressure and ACL."""
 
 import json
+import threading
+import time
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -108,6 +111,53 @@ class TestObservation:
         total = queue.flush_all()
         assert total == 5
         assert queue.queue_size() == 0
+
+    def test_concurrent_flushes_are_serialized(self, db, monkeypatch):
+        queue = ObservationQueue(db, batch_size=1)
+        queue.enqueue(make_obs(idempotency_key="concurrent-1"))
+        queue.enqueue(make_obs(idempotency_key="concurrent-2"))
+
+        original_transaction = db.transaction
+        state_lock = threading.Lock()
+        active = 0
+        max_active = 0
+
+        @contextmanager
+        def slow_transaction():
+            nonlocal active, max_active
+            with state_lock:
+                active += 1
+                max_active = max(max_active, active)
+            try:
+                time.sleep(0.05)
+                with original_transaction():
+                    yield
+            finally:
+                with state_lock:
+                    active -= 1
+
+        monkeypatch.setattr(db, "transaction", slow_transaction)
+        start = threading.Barrier(3)
+        counts = []
+        errors = []
+
+        def flush_once():
+            start.wait()
+            try:
+                counts.append(queue.flush())
+            except Exception as exc:
+                errors.append(exc)
+
+        threads = [threading.Thread(target=flush_once) for _ in range(2)]
+        for thread in threads:
+            thread.start()
+        start.wait()
+        for thread in threads:
+            thread.join()
+
+        assert errors == []
+        assert sorted(counts) == [1, 1]
+        assert max_active == 1
 
     def test_stats(self, queue):
         assert queue.stats()["enqueued"] == 0
