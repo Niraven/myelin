@@ -169,6 +169,7 @@ class ObservationQueue:
         self._queue: Queue[Observation] = Queue(maxsize=max_queue_size)
         self._permissions = AgentPermissions()
         self._lock = threading.Lock()
+        self._flush_lock = threading.Lock()
         self._stats: dict[str, int] = {
             "enqueued": 0,
             "flushed": 0,
@@ -205,10 +206,12 @@ class ObservationQueue:
             ) from None
 
     def flush(self) -> int:
-        """Flush all pending observations to the database.
+        """Flush one batch to the database, serialized across callers."""
+        with self._flush_lock:
+            return self._flush_batch()
 
-        Returns the number of observations flushed.
-        """
+    def _flush_batch(self) -> int:
+        """Flush one batch while the caller holds ``_flush_lock``."""
         batch: list[Observation] = []
         while not self._queue.empty() and len(batch) < self.batch_size:
             try:
