@@ -16,7 +16,6 @@ faster for local deployments.
 from __future__ import annotations
 
 import datetime
-import json
 from typing import Any
 
 from ..core.activation import base_level_activation

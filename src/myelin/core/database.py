@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import re
-
 import json
+import re
 import sqlite3
 import struct
 from contextlib import contextmanager
@@ -27,6 +26,7 @@ def _deserialize_f32(blob: bytes, dim: int = 768) -> list[float]:
 def _normalize_fts_token(token: str) -> str:
     """NFKC-normalize a single token and FTS5-safe-quote it."""
     import unicodedata
+
     normalized = unicodedata.normalize("NFKC", token)
     safe = normalized.replace('"', '""')
     return f'"{safe}"'
@@ -39,9 +39,24 @@ def _contains_injection(token: str) -> bool:
     injection attempts in their raw form.
     """
     upper = token.upper()
-    for kw in ("DROP", "DELETE", "UPDATE", "INSERT", "ALTER", "CREATE",
-               "EXEC", "ATTACH", "PRAGMA", "REINDEX", "REPLACE", "VACUUM",
-               "UNION", ";", "/*", "*/"):
+    for kw in (
+        "DROP",
+        "DELETE",
+        "UPDATE",
+        "INSERT",
+        "ALTER",
+        "CREATE",
+        "EXEC",
+        "ATTACH",
+        "PRAGMA",
+        "REINDEX",
+        "REPLACE",
+        "VACUUM",
+        "UNION",
+        ";",
+        "/*",
+        "*/",
+    ):
         if kw in upper:
             return True
     # A standalone SQL comment marker is dangerous, but command-line flags
@@ -49,9 +64,7 @@ def _contains_injection(token: str) -> bool:
     # before reaching FTS5.  Treat ``--`` as a comment only at token end or
     # when followed by whitespace; tokenization normally removes whitespace,
     # so the direct ``_contains_injection('--')`` guard remains useful.
-    if token == "--" or re.search(r"--\s", token):
-        return True
-    return False
+    return bool(token == "--" or re.search(r"--\s", token))
 
 
 def _tokenize_fts_query(query: str) -> list[str]:
@@ -99,16 +112,12 @@ def build_fts_where(
     quoted: list[str] = []
     for token in tokens:
         if _contains_injection(token):
-            raise ValueError(
-                f"Rejected potential SQL injection in FTS token: {token!r}"
-            )
+            raise ValueError(f"Rejected potential SQL injection in FTS token: {token!r}")
         quoted.append(_normalize_fts_token(token))
 
     expr = f" {operator} ".join(quoted)
     if len(expr) > max_len:
-        raise ValueError(
-            f"FTS query expression too long ({len(expr)} chars, max {max_len})"
-        )
+        raise ValueError(f"FTS query expression too long ({len(expr)} chars, max {max_len})")
     return expr
 
 
@@ -140,16 +149,24 @@ def validate_where_clause(where: str | None) -> None:
     dangerous = (";", "--", "/*", "*/")
     for pattern in dangerous:
         if pattern in where:
-            raise ValueError(
-                f"Rejected dangerous WHERE clause pattern {pattern!r}"
-            )
-    for kw in ("DROP", "DELETE", "UPDATE", "INSERT", "ALTER", "CREATE",
-               "EXEC", "ATTACH", "PRAGMA", "REINDEX", "REPLACE", "VACUUM",
-               "UNION"):
+            raise ValueError(f"Rejected dangerous WHERE clause pattern {pattern!r}")
+    for kw in (
+        "DROP",
+        "DELETE",
+        "UPDATE",
+        "INSERT",
+        "ALTER",
+        "CREATE",
+        "EXEC",
+        "ATTACH",
+        "PRAGMA",
+        "REINDEX",
+        "REPLACE",
+        "VACUUM",
+        "UNION",
+    ):
         if kw in upper.split():
-            raise ValueError(
-                f"Rejected SQL keyword {kw!r} in WHERE clause"
-            )
+            raise ValueError(f"Rejected SQL keyword {kw!r} in WHERE clause")
 
 
 class Database:

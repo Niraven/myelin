@@ -66,12 +66,21 @@ class _CurrentHandler:
     def __init__(self) -> None:
         self._facts: dict[str, dict] = {}
 
-    async def memorize(self, agent_id: str, key: str, value: str, domain=None, ttl_days=None) -> dict:
+    async def memorize(
+        self, agent_id: str, key: str, value: str, domain=None, ttl_days=None
+    ) -> dict:
         fact_id = f"semantic-{len(self._facts)}"
         self._facts[fact_id] = {"agent_id": agent_id, "key": key, "value": value, "domain": domain}
         return {"fact_id": fact_id}
 
-    async def update(self, memory_id: str, memory_type: str = "episode", content_text=None, action=None, value=None) -> dict:
+    async def update(
+        self,
+        memory_id: str,
+        memory_type: str = "episode",
+        content_text=None,
+        action=None,
+        value=None,
+    ) -> dict:
         self._facts[memory_id]["value"] = value
         return {"success": True, "memory_id": memory_id, "memory_type": memory_type}
 

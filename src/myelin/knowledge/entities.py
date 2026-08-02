@@ -306,8 +306,7 @@ class EntityStore:
         re-extracting entities from an episode that already has them.
         """
         row = self.db.fetchone(
-            "SELECT COUNT(*) as cnt FROM entity_mentions "
-            "WHERE source_id = ? AND source_type = ?",
+            "SELECT COUNT(*) as cnt FROM entity_mentions WHERE source_id = ? AND source_type = ?",
             (source_id, source_type),
         )
         return row["cnt"] if row else 0

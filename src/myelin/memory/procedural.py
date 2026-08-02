@@ -174,8 +174,12 @@ class ProceduralMemory:
             episode_id=episode_id,
         )
         data = evidence.model_dump()
-        data["source"] = data["source"].value if hasattr(data["source"], "value") else data["source"]
-        data["outcome"] = data["outcome"].value if hasattr(data["outcome"], "value") else data["outcome"]
+        data["source"] = (
+            data["source"].value if hasattr(data["source"], "value") else data["source"]
+        )
+        data["outcome"] = (
+            data["outcome"].value if hasattr(data["outcome"], "value") else data["outcome"]
+        )
         self.db.insert("procedure_evidence", data)
 
         # Update last_evidence_timestamp on the procedure
@@ -235,9 +239,7 @@ class ProceduralMemory:
         self.db.update("procedures", procedure_id, {"trust_state": new_state.value})
         return new_state.value
 
-    def get_evidence(
-        self, procedure_id: str, limit: int = 20
-    ) -> list[dict[str, Any]]:
+    def get_evidence(self, procedure_id: str, limit: int = 20) -> list[dict[str, Any]]:
         """Retrieve evidence records for a procedure, newest first."""
         return self.db.fetchall(
             "SELECT * FROM procedure_evidence WHERE procedure_id = ? ORDER BY timestamp DESC LIMIT ?",

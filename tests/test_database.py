@@ -1,15 +1,15 @@
 """Tests for Database FTS5 query hardening and SQL injection guards."""
 
-import unicodedata
 import pytest
+
 from myelin.core.database import (
-    _normalize_fts_token,
+    Database,
     _contains_injection,
+    _normalize_fts_token,
     _tokenize_fts_query,
     build_fts_where,
     escape_fts_query,
     validate_where_clause,
-    Database,
 )
 
 
@@ -99,11 +99,11 @@ class TestTokenizeFtsQuery:
 
 
 class TestBuildFtsWhere:
-    def test_OR_query(self):
+    def test_or_query(self):
         result = build_fts_where(["hello", "world"], operator="OR")
         assert result == '"hello" OR "world"'
 
-    def test_AND_query(self):
+    def test_and_query(self):
         result = build_fts_where(["hello", "world"], operator="AND")
         assert result == '"hello" AND "world"'
 

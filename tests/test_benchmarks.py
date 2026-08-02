@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import json
 import time
-from pathlib import Path
-
-import pytest
 
 from benchmarks.ci_subset import run_ci_subset
+from benchmarks.locomo.harness import (
+    CONVERSATIONS,
+    evaluate_locomo,
+)
 from benchmarks.longmemeval.dataset import (
     DOMAINS,
     QUESTIONS_PER_DOMAIN,
@@ -19,11 +20,6 @@ from benchmarks.longmemeval.harness import (
     evaluate_bm25,
     evaluate_full_context,
 )
-from benchmarks.locomo.harness import (
-    CONVERSATIONS,
-    evaluate_locomo,
-)
-
 
 # ---------------------------------------------------------------------------
 # Dataset structure
@@ -93,7 +89,7 @@ class TestDatasetStructure:
             assert q["domain"] in DOMAINS
             assert q["type"] == "factual"
             assert isinstance(q["question"], str)
-            assert isinstance(q["answer"], str) or isinstance(q["answer"], list)
+            assert isinstance(q["answer"], (str, list))
 
 
 # ---------------------------------------------------------------------------
@@ -107,7 +103,7 @@ class TestDeterminism:
         d2 = LongMemEvalDataset(seed=42)
         e1 = d1.generate_episodes()
         e2 = d2.generate_episodes()
-        for a, b in zip(e1, e2):
+        for a, b in zip(e1, e2, strict=True):
             assert a["content"] == b["content"]
 
     def test_dataset_deterministic_questions_same_seed(self):
@@ -115,15 +111,13 @@ class TestDeterminism:
         d2 = LongMemEvalDataset(seed=42)
         q1 = d1.generate_questions()
         q2 = d2.generate_questions()
-        for a, b in zip(q1, q2):
+        for a, b in zip(q1, q2, strict=True):
             assert a["question"] == b["question"]
             assert a["answer"] == b["answer"]
 
     def test_different_seeds_produce_different_content(self):
         d1 = LongMemEvalDataset(seed=42)
         d2 = LongMemEvalDataset(seed=99)
-        e1 = d1.generate_episodes()
-        e2 = d2.generate_episodes()
         # Template-driven content uses index, not rng, so content is identical.
         # Only check that the metadata includes the seed (provenance).
         assert d1.metadata()["seed"] == 42
@@ -162,9 +156,7 @@ class TestErrorHandling:
         assert result["total"] == 0
 
     def test_empty_episodes_bm25(self):
-        result = evaluate_bm25(
-            [{"question": "q?", "answer": "a", "domain": "t"}], []
-        )
+        result = evaluate_bm25([{"question": "q?", "answer": "a", "domain": "t"}], [])
         assert result["accuracy_at_1"] == 0.0
         assert result["total"] == 0
 
@@ -174,9 +166,7 @@ class TestErrorHandling:
         assert result["total"] == 0
 
     def test_empty_episodes_full_context(self):
-        result = evaluate_full_context(
-            [{"question": "q?", "answer": "a", "domain": "t"}], []
-        )
+        result = evaluate_full_context([{"question": "q?", "answer": "a", "domain": "t"}], [])
         assert result["accuracy_at_1"] == 0.0
         assert result["total"] == 0
 
@@ -272,7 +262,7 @@ class TestLoCoMo:
 
     def test_conversations_have_required_fields(self):
         for conv in CONVERSATIONS:
-            assert "name" in conv, f"Missing 'name' in conversation"
+            assert "name" in conv, "Missing 'name' in conversation"
             assert "turns" in conv, f"Missing 'turns' in {conv.get('name')}"
             assert "questions" in conv, f"Missing 'questions' in {conv.get('name')}"
             assert len(conv["turns"]) >= 5, (

@@ -183,7 +183,10 @@ TOOLS = [
             "type": "object",
             "properties": {
                 "agent_id": {"type": "string"},
-                "key_prefix": {"type": "string", "description": "Filter by key prefix (e.g. 'user_')"},
+                "key_prefix": {
+                    "type": "string",
+                    "description": "Filter by key prefix (e.g. 'user_')",
+                },
                 "domain": {"type": "string"},
                 "limit": {"type": "integer", "default": 20},
             },
@@ -197,7 +200,11 @@ TOOLS = [
             "type": "object",
             "properties": {
                 "memory_id": {"type": "string"},
-                "memory_type": {"type": "string", "enum": ["episode", "semantic", "procedure"], "default": "episode"},
+                "memory_type": {
+                    "type": "string",
+                    "enum": ["episode", "semantic", "procedure"],
+                    "default": "episode",
+                },
             },
             "required": ["memory_id"],
         },
@@ -455,8 +462,16 @@ TOOLS = [
             "type": "object",
             "properties": {
                 "memory_id": {"type": "string", "description": "ID of the memory to update"},
-                "memory_type": {"type": "string", "enum": ["episode", "semantic"], "default": "episode", "description": "Which memory type to update"},
-                "content_text": {"type": "string", "description": "Updated content text (episode only)"},
+                "memory_type": {
+                    "type": "string",
+                    "enum": ["episode", "semantic"],
+                    "default": "episode",
+                    "description": "Which memory type to update",
+                },
+                "content_text": {
+                    "type": "string",
+                    "description": "Updated content text (episode only)",
+                },
                 "action": {"type": "string", "description": "Updated action (episode only)"},
                 "value": {"type": "string", "description": "Updated value (semantic fact only)"},
             },

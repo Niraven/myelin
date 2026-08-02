@@ -154,9 +154,7 @@ class TestObservation:
         queue.enqueue(make_obs(idempotency_key="current"))
         queue.flush()
 
-        row = db.fetchone(
-            "SELECT processed FROM observation_queue WHERE id = ?", (backlog.id,)
-        )
+        row = db.fetchone("SELECT processed FROM observation_queue WHERE id = ?", (backlog.id,))
         assert row["processed"] == 1
         assert db.fetchone("SELECT id FROM episodes WHERE id = ?", (backlog.id,))
 
@@ -166,9 +164,7 @@ class TestObservation:
         db.insert("observation_queue", backlog.to_row())
 
         assert queue.flush() == 1
-        row = db.fetchone(
-            "SELECT processed FROM observation_queue WHERE id = ?", (backlog.id,)
-        )
+        row = db.fetchone("SELECT processed FROM observation_queue WHERE id = ?", (backlog.id,))
         assert row["processed"] == 1
         assert db.fetchone("SELECT id FROM episodes WHERE id = ?", (backlog.id,))
 
