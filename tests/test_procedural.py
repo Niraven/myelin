@@ -97,6 +97,19 @@ def test_find_matching_by_text(procedural):
     assert matches[0]["name"] == "deploy_app"
 
 
+def test_procedure_retrieval_goldens_accept_sql_words_as_search_data(procedural):
+    goldens = [
+        ("create_obsidian_project_note", "create canonical obsidian project note"),
+        ("update_kubernetes_manifest", "update kubernetes deployment manifest"),
+    ]
+    for name, _query in goldens:
+        procedural.store(_make_procedure(name=name, status=ProcedureStatus.ACTIVE, confidence=0.8))
+
+    for expected, query in goldens:
+        matches = procedural.find_matching(query)
+        assert matches[0]["name"] == expected
+
+
 def test_count_by_status(procedural):
     for i, status in enumerate(
         [ProcedureStatus.DRAFT, ProcedureStatus.ACTIVE, ProcedureStatus.ACTIVE]

@@ -30,17 +30,9 @@ class TestFtsTokenNormalization:
 
 
 class TestInjectionDetection:
-    def test_rejects_drop(self):
-        assert _contains_injection("DROP") is True
-
-    def test_rejects_delete(self):
-        assert _contains_injection("DELETE") is True
-
-    def test_rejects_update(self):
-        assert _contains_injection("UPDATE") is True
-
-    def test_rejects_union(self):
-        assert _contains_injection("UNION") is True
+    @pytest.mark.parametrize("token", ["DROP", "DELETE", "UPDATE", "UNION", "CREATE", "xDROP"])
+    def test_accepts_sql_words_as_literal_search_terms(self, token):
+        assert _contains_injection(token) is False
 
     def test_rejects_semicolon(self):
         assert _contains_injection(";") is True
@@ -56,9 +48,6 @@ class TestInjectionDetection:
 
     def test_accepts_mixed_case(self):
         assert _contains_injection("download") is False
-
-    def test_detects_embedded_keyword(self):
-        assert _contains_injection("xDROP") is True
 
 
 class TestTokenizeFtsQuery:
@@ -113,9 +102,8 @@ class TestBuildFtsWhere:
     def test_single_token(self):
         assert build_fts_where(["hello"]) == '"hello"'
 
-    def test_rejects_injection_in_token(self):
-        with pytest.raises(ValueError, match="SQL injection"):
-            build_fts_where(["hello", "DROP"])
+    def test_accepts_sql_keyword_as_literal_token(self):
+        assert build_fts_where(["hello", "DROP"]) == '"hello" OR "DROP"'
 
     def test_rejects_injection_semicolon(self):
         with pytest.raises(ValueError, match="SQL injection"):
@@ -130,9 +118,8 @@ class TestBuildFtsWhere:
         result = build_fts_where(["hello"], max_len=10)
         assert len(result) <= 10
 
-    def test_unicode_injection_rejected(self):
-        with pytest.raises(ValueError, match="SQL injection"):
-            build_fts_where(["DROP\u2000TABLE"])
+    def test_unicode_space_is_normalized_inside_literal_token(self):
+        assert build_fts_where(["DROP\u2000TABLE"]) == '"DROP TABLE"'
 
 
 class TestEscapeFtsQuery:
@@ -152,9 +139,8 @@ class TestEscapeFtsQuery:
     def test_punctuation_only_returns_sentinel(self):
         assert escape_fts_query("!@#") == '"__myelin_no_match__"'
 
-    def test_rejects_injection(self):
-        with pytest.raises(ValueError):
-            escape_fts_query("hello; DROP TABLE")
+    def test_sql_text_is_quoted_as_literal_search_terms(self):
+        assert escape_fts_query("hello; DROP TABLE") == '"hello" OR "DROP" OR "TABLE"'
 
     def test_rejects_long_query(self):
         with pytest.raises(ValueError):
@@ -216,3 +202,7 @@ class TestFtsSearchIntegration:
     def test_fts_search_rejects_injection_where(self, db):
         with pytest.raises(ValueError):
             db.fts_search("test_data", "test_fts", "hello", where="1=1; DROP TABLE test_data")
+
+    def test_fts_search_treats_sql_keywords_as_data(self, db):
+        assert db.fts_search("test_data", "test_fts", "create project note") == []
+        assert db.fetchone("SELECT COUNT(*) AS count FROM test_data")["count"] == 2
