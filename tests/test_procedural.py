@@ -97,6 +97,42 @@ def test_find_matching_by_text(procedural):
     assert matches[0]["name"] == "deploy_app"
 
 
+def test_find_matching_returns_candidates_without_trust_filter(procedural, tmp_db):
+    from myelin.core.models import TrustState
+
+    proc = _make_procedure(name="deploy_candidate", status=ProcedureStatus.ACTIVE, confidence=0.5)
+    procedural.store(proc)
+    tmp_db.update("procedures", proc.id, {"trust_state": TrustState.CANDIDATE.value})
+
+    # Direct/diagnostic callers see candidates when no trust filter is requested.
+    matches = procedural.find_matching("deploy candidate")
+    assert any(m["name"] == "deploy_candidate" for m in matches)
+
+    # Explicit trust filter narrows the result set.
+    trusted = procedural.find_matching("deploy candidate", trust_states=[TrustState.TRUSTED.value])
+    assert all(m["trust_state"] != TrustState.CANDIDATE.value for m in trusted)
+
+
+def test_find_matching_filters_by_domain(procedural):
+    procedural.store(
+        _make_procedure(
+            name="deploy_prod", domain="deployment", status=ProcedureStatus.ACTIVE, confidence=0.8
+        )
+    )
+    procedural.store(
+        _make_procedure(
+            name="deploy_staging", domain="staging", status=ProcedureStatus.ACTIVE, confidence=0.8
+        )
+    )
+
+    matches = procedural.find_matching("deploy", domain="deployment")
+    assert len(matches) == 1
+    assert matches[0]["name"] == "deploy_prod"
+
+    unfiltered = procedural.find_matching("deploy")
+    assert {m["name"] for m in unfiltered} == {"deploy_prod", "deploy_staging"}
+
+
 def test_procedure_retrieval_goldens_accept_sql_words_as_search_data(procedural):
     goldens = [
         ("create_obsidian_project_note", "create canonical obsidian project note"),

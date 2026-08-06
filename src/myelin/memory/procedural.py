@@ -50,14 +50,30 @@ class ProceduralMemory:
         limit: int = 5,
         min_confidence: float = 0.3,
         agent_ids: list[str] | None = None,
+        domain: str | None = None,
+        trust_states: list[str] | None = None,
     ) -> list[dict[str, Any]]:
-        """Find procedures matching a trigger pattern."""
-        where = None
-        where_params: tuple[Any, ...] = ()
+        """Find procedures matching a trigger pattern.
+
+        Optional ``domain`` and ``trust_states`` filters are only applied when
+        provided; direct/diagnostic callers that omit them keep the existing
+        unfiltered behaviour.
+        """
+        clauses: list[str] = []
+        params: list[Any] = []
         if agent_ids and agent_ids != ["*"]:
             placeholders = ",".join("?" for _ in agent_ids)
-            where = f"source_agent IN ({placeholders})"
-            where_params = tuple(agent_ids)
+            clauses.append(f"t.source_agent IN ({placeholders})")
+            params.extend(agent_ids)
+        if domain is not None:
+            clauses.append("t.domain = ?")
+            params.append(domain)
+        if trust_states:
+            placeholders = ",".join("?" for _ in trust_states)
+            clauses.append(f"t.trust_state IN ({placeholders})")
+            params.extend(trust_states)
+        where = " AND ".join(clauses) if clauses else None
+        where_params = tuple(params)
         results = self.db.hybrid_search(
             "procedures",
             "procedures_fts",
