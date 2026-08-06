@@ -211,6 +211,10 @@ CREATE TABLE IF NOT EXISTS procedure_evidence (
 CREATE INDEX IF NOT EXISTS idx_pe_procedure ON procedure_evidence(procedure_id);
 CREATE INDEX IF NOT EXISTS idx_pe_source ON procedure_evidence(source);
 CREATE INDEX IF NOT EXISTS idx_pe_timestamp ON procedure_evidence(timestamp);
+-- Provenance must be unique: a prediction_log id may back at most one evidence row.
+-- Partial so legacy NULL (unbound) evidence is unaffected.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_pe_prediction_unique
+    ON procedure_evidence(prediction_id) WHERE prediction_id IS NOT NULL;
 
 -- ============================================================
 -- V4: RECONSOLIDATION LOG

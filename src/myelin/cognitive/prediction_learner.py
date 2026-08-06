@@ -174,10 +174,6 @@ class PredictionLearner:
         if not pred:
             return {"error": f"Prediction {prediction_id} not found"}
 
-        # Skip if already recorded
-        if pred.get("actual_outcome") is not None:
-            return self._build_outcome_response(pred, already_recorded=True)
-
         predicted_success = pred["predicted_success"]
         predicted_confidence = pred["predicted_confidence"]
         procedure_id = pred["procedure_id"]
@@ -189,46 +185,53 @@ class PredictionLearner:
         # Step 3: Surprise
         surprise = compute_surprise(td_error, predicted_confidence)
 
-        # Update prediction log
-        self.db.update(
-            "prediction_log",
-            prediction_id,
-            {
-                "actual_outcome": actual_val,
-                "td_error": td_error,
-                "surprise_score": surprise,
-            },
-        )
-
-        # Step 4: Update procedure confidence with TD-modulated learning rate
-        proc = self.procedural.get(procedure_id)
-        old_confidence = proc["confidence"] if proc else 0.0
-        self._update_procedure_confidence(
-            procedure_id=procedure_id,
-            td_error=td_error,
-            actual_success=actual_success,
-            predicted_confidence=predicted_confidence,
-        )
-
-        # Record one procedure_evidence row linked to this prediction (verified).
-        proc_after = self.procedural.get(procedure_id)
-        new_confidence = proc_after["confidence"] if proc_after else old_confidence
-        self.procedural.record_evidence(
-            procedure_id=procedure_id,
-            source="feedback",
-            outcome="success" if actual_success else "failure",
-            confidence_delta=new_confidence - old_confidence,
-            prediction_id=prediction_id,
-        )
-
-        # Step 5: Update episode priority if episode_id available
-        resolved_episode_id = episode_id or pred.get("episode_id")
-        if resolved_episode_id:
-            self._update_episode_priority(
-                episode_id=resolved_episode_id,
-                td_error=td_error,
-                surprise=surprise,
+        # One transaction covers the conditional claim plus every mutation, so
+        # two concurrent writers can never double-apply confidence/counters or
+        # record two evidence rows for the same prediction. The claim is a
+        # compare-and-swap UPDATE: it only wins when actual_outcome is still
+        # pending. If it loses, another writer already recorded the outcome and
+        # we return the idempotent response without touching anything. Any
+        # failure after the claim rolls the whole transaction back (including
+        # the claim itself) so a retry can complete.
+        with self.db.transaction():
+            cur = self.db.execute(
+                "UPDATE prediction_log "
+                "SET actual_outcome = ?, td_error = ?, surprise_score = ? "
+                "WHERE id = ? AND actual_outcome IS NULL",
+                (actual_val, td_error, surprise, prediction_id),
             )
+            if cur.rowcount == 0:
+                return self._build_outcome_response(pred, already_recorded=True)
+
+            # Step 4: Update procedure confidence with TD-modulated learning rate
+            proc = self.procedural.get(procedure_id)
+            old_confidence = proc["confidence"] if proc else 0.0
+            self._update_procedure_confidence(
+                procedure_id=procedure_id,
+                td_error=td_error,
+                actual_success=actual_success,
+                predicted_confidence=predicted_confidence,
+            )
+
+            # Record one procedure_evidence row linked to this prediction (verified).
+            proc_after = self.procedural.get(procedure_id)
+            new_confidence = proc_after["confidence"] if proc_after else old_confidence
+            self.procedural.record_evidence(
+                procedure_id=procedure_id,
+                source="feedback",
+                outcome="success" if actual_success else "failure",
+                confidence_delta=new_confidence - old_confidence,
+                prediction_id=prediction_id,
+            )
+
+            # Step 5: Update episode priority if episode_id available
+            resolved_episode_id = episode_id or pred.get("episode_id")
+            if resolved_episode_id:
+                self._update_episode_priority(
+                    episode_id=resolved_episode_id,
+                    td_error=td_error,
+                    surprise=surprise,
+                )
 
         return self._build_outcome_response(pred, td_error, surprise, actual_success)
 

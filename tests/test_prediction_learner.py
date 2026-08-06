@@ -350,3 +350,118 @@ class TestMCPHandlers:
         )
         assert result["status"] == "recorded"
         assert result["td_error"] == -1.0
+
+
+# ── Atomic feedback: CAS claim + encompassing transaction ──────
+
+
+def _evidence_count(db, prediction_id):
+    return db.fetchone(
+        "SELECT COUNT(*) AS c FROM procedure_evidence WHERE prediction_id = ?",
+        (prediction_id,),
+    )["c"]
+
+
+class TestAtomicFeedback:
+    def test_sequential_replay_is_noop(self, tmp_db, procedural):
+        """Replaying feedback for an already-finalized prediction applies nothing."""
+        learner = PredictionLearner(tmp_db, procedural)
+        proc = _make_procedure(confidence=0.6)
+        procedural.store(proc)
+
+        pred = learner.predict_outcome(proc.id)
+        pred_id = pred["prediction_id"]
+        learner.record_outcome(pred_id, actual_success=True)
+        after_first = procedural.get(proc.id)
+        first_ev = _evidence_count(tmp_db, pred_id)
+
+        result = learner.record_outcome(pred_id, actual_success=False)
+        assert result["status"] == "already_recorded"
+
+        after_replay = procedural.get(proc.id)
+        assert after_replay["success_count"] == after_first["success_count"]
+        assert after_replay["execution_count"] == after_first["execution_count"]
+        assert after_replay["confidence"] == after_first["confidence"]
+        assert _evidence_count(tmp_db, pred_id) == first_ev == 1
+
+    def test_transaction_rollback_on_post_claim_failure(self, tmp_db, procedural, monkeypatch):
+        """A failure after the CAS claim rolls back the claim and every mutation."""
+        learner = PredictionLearner(tmp_db, procedural)
+        proc = _make_procedure(confidence=0.6)
+        procedural.store(proc)
+        before = procedural.get(proc.id)
+
+        pred = learner.predict_outcome(proc.id)
+        pred_id = pred["prediction_id"]
+
+        # Inject a failure after confidence was updated, before commit.
+        def _boom(*args, **kwargs):
+            raise RuntimeError("injected post-claim failure")
+
+        monkeypatch.setattr(procedural, "record_evidence", _boom)
+        with pytest.raises(RuntimeError):
+            learner.record_outcome(pred_id, actual_success=True)
+
+        # Encompassing transaction rolled everything back.
+        pred_row = tmp_db.fetchone("SELECT * FROM prediction_log WHERE id = ?", (pred_id,))
+        assert pred_row["actual_outcome"] is None
+        assert pred_row["td_error"] == 0.0
+        after = procedural.get(proc.id)
+        assert after["success_count"] == before["success_count"]
+        assert after["execution_count"] == before["execution_count"]
+        assert _evidence_count(tmp_db, pred_id) == 0
+
+        # Retry after the fault clears succeeds cleanly.
+        monkeypatch.undo()
+        result = learner.record_outcome(pred_id, actual_success=True)
+        assert result["status"] == "recorded"
+        assert _evidence_count(tmp_db, pred_id) == 1
+
+    def test_concurrent_record_outcome_applies_once(self, tmp_path):
+        """Two writers racing on one prediction finalize it exactly once."""
+        import threading
+
+        from myelin.core.database import Database
+        from myelin.memory.procedural import ProceduralMemory
+
+        db_path = tmp_path / "race.db"
+        db = Database(path=db_path, enable_vec=False)
+        _ = db.conn
+        procedural = ProceduralMemory(db)
+        proc = _make_procedure(confidence=0.5)
+        procedural.store(proc)
+        pred = PredictionLearner(db, procedural).predict_outcome(proc.id)
+        pred_id = pred["prediction_id"]
+        before = procedural.get(proc.id)
+        db.close()
+
+        results = []
+        barrier = threading.Barrier(2)
+
+        def _worker():
+            d = Database(path=db_path, enable_vec=False)
+            _ = d.conn
+            p = ProceduralMemory(d)
+            worker_learner = PredictionLearner(d, p)
+            barrier.wait()
+            results.append(worker_learner.record_outcome(pred_id, actual_success=True))
+            d.close()
+
+        threads = [threading.Thread(target=_worker) for _ in range(2)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        db = Database(path=db_path, enable_vec=False)
+        _ = db.conn
+        pred_row = db.fetchone("SELECT * FROM prediction_log WHERE id = ?", (pred_id,))
+        assert pred_row["actual_outcome"] == 1
+        assert _evidence_count(db, pred_id) == 1
+        proc_row = ProceduralMemory(db).get(proc.id)
+        assert proc_row["success_count"] == before["success_count"] + 1
+        assert proc_row["execution_count"] == before["execution_count"] + 1
+        statuses = [r.get("status") for r in results]
+        assert statuses.count("recorded") == 1
+        assert statuses.count("already_recorded") == 1
+        db.close()
