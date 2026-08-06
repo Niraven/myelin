@@ -55,6 +55,8 @@ WORKFLOWS = [
     ],
 ]
 
+VERIFIED_FEEDBACK_CYCLES = 3
+
 
 async def run_demo(db_path: Path) -> dict[str, Any]:
     if db_path.exists():
@@ -101,20 +103,40 @@ async def run_demo(db_path: Path) -> dict[str, Any]:
             query="ci workflow",
             agent_id="hermes",
         )
+        initial_confidence = execution["confidence"] if execution["found"] else 0.0
 
         feedback = None
-        if execution["found"]:
+        for cycle in range(VERIFIED_FEEDBACK_CYCLES):
+            if cycle:
+                execution = await handlers.execute_procedure(
+                    query="ci workflow",
+                    agent_id="hermes",
+                )
             feedback = await handlers.procedure_feedback(
                 procedure_id=execution["procedure_id"],
                 success=True,
                 notes="Hermes completed the CI repair workflow using the suggested procedure.",
+                prediction_id=execution["prediction_id"],
             )
+
+        assert feedback is not None
+        context = await handlers.context(
+            query="ci workflow",
+            domain="ci",
+            agent_id="hermes",
+            max_memories=3,
+            max_procedures=1,
+        )
 
         return {
             "episodes_observed": episodes,
             "procedures_created": promoter_result.get("created", 0),
+            "initial_confidence": initial_confidence,
             "execution": execution,
             "feedback": feedback,
+            "evidence_quality": feedback["evidence_quality"],
+            "trust_state": feedback["trust_state"],
+            "matching_procedures": [p["name"] for p in context.get("matching_procedures", [])],
         }
     finally:
         db.close()
@@ -142,17 +164,20 @@ def main() -> None:
         return
 
     print(f"Learned procedure: {execution['name']}")
-    print(f"Initial confidence: {execution['confidence']:.0%}")
-    print(f"Trust level: {execution['trust_level']}")
-    print(f"Recommendation: {execution['recommendation']}")
+    print(f"Initial confidence: {result['initial_confidence']:.0%}")
+    print(f"Verified feedback loop ({VERIFIED_FEEDBACK_CYCLES} × execute → bound feedback):")
+    print(f"  evidence_quality: {result['evidence_quality']}")
+    print(f"  stored trust_state: {result['trust_state']}")
     print("Steps:")
     for index, step in enumerate(execution["steps"], start=1):
         print(f"  {index}. {step['description']} [{step['step_type']}]")
 
     feedback = result["feedback"]
     if feedback:
-        print(f"Confidence after success feedback: {feedback['new_confidence']:.0%}")
-        print(f"Trust after feedback: {feedback['trust_level']}")
+        print(f"Confidence after verified feedback: {feedback['new_confidence']:.0%}")
+
+    if result["matching_procedures"]:
+        print(f"Same-domain context includes procedure: {result['matching_procedures'][0]}")
 
 
 if __name__ == "__main__":

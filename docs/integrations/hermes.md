@@ -29,15 +29,11 @@ Myelin should own:
 
 ## Install
 
-From PyPI after release:
+From a source checkout (not yet published to PyPI):
 
 ```bash
-pip install myelin-memory
-```
-
-From a checkout:
-
-```bash
+git clone https://github.com/Niraven/myelin.git
+cd myelin
 pip install -e ".[dev]"
 ```
 
@@ -147,11 +143,14 @@ After a task:
   "tool": "myelin_procedure_feedback",
   "arguments": {
     "procedure_id": "returned-procedure-id",
+    "prediction_id": "prediction-id-from-execute",
     "success": true,
     "notes": "Hermes completed the workflow without manual correction."
   }
 }
 ```
+
+`myelin_execute_procedure` returns a `prediction_id`. Pass it to `myelin_procedure_feedback` to bind the result to that prediction: bound feedback is verified, idempotent, and atomic and can promote trust. If you omit `prediction_id`, feedback still updates confidence but cannot promote trust.
 
 At session end or daily maintenance:
 
@@ -210,9 +209,13 @@ Expected shape:
 Hermes + Myelin procedure-learning demo
 Episodes observed: 26
 Procedures created: 1
-Trust level: candidate
-Recommendation: suggest_only_review_before_execution
-Trust after feedback: validated
+Learned procedure: auto_apply_run_push
+Initial confidence: 71%
+Verified feedback loop (3 × execute → bound feedback):
+  evidence_quality: verified
+  stored trust_state: trusted
+Confidence after verified feedback: 82%
+Same-domain context includes procedure: auto_apply_run_push
 ```
 
 If this works, wire Hermes to the MCP server and let it observe low-risk workflows first: repo CI, recurring research summaries, build-log-to-brand, and deployment dry-runs.

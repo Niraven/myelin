@@ -13,10 +13,12 @@ Do not publish speed comparisons against Mnemosyne, Noxem, Supermemory, Honcho, 
 | Mode | Embeddings | Best for | Notes |
 |---|---|---|---|
 | Fast trace | `--embedding-model none` | Hermes/Codex tool events, CI repair, deployment traces, swarm action logs | Default launch mode. Uses SQLite + FTS5 only. |
-| Semantic | `--embedding-model local` | Richer natural-language recall over long notes or summaries | Requires `pip install "myelin-memory[embeddings]"`. |
+| Semantic | `--embedding-model local` | Richer natural-language recall over long notes or summaries | Requires `pip install -e ".[embeddings]"`. |
 | Hybrid | FTS first, embeddings where useful | Mixed procedural traces and semantic notes | Keep action traces no-embedding unless semantic recall quality matters. |
 
 ## Benchmark
+
+`--counts` takes one or more comma-separated observation counts and defaults to `1000`. Add `--json` for machine-readable output.
 
 Run a smoke benchmark:
 

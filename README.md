@@ -1,11 +1,11 @@
 <p align="center">
-  <img src="assets/brand/social-preview.png" alt="Myelin: mem0 remembers. Myelin learns." width="920">
+  <img src="assets/brand/social-preview.png" alt="Myelin — procedural learning for AI agents" width="920">
 </p>
 
 <p align="center">
   <a href="https://github.com/Niraven/myelin/actions/workflows/ci.yml"><img src="https://github.com/Niraven/myelin/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/python-3.11%2B-3776AB" alt="Python 3.11+">
-  <img src="https://img.shields.io/badge/MCP-native-0F766E" alt="MCP native">
+  <img src="https://img.shields.io/badge/transport-stdio%20MCP-0F766E" alt="stdio MCP">
   <img src="https://img.shields.io/badge/storage-SQLite-1D4ED8" alt="SQLite">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-F8D36A" alt="MIT license"></a>
 </p>
@@ -14,46 +14,38 @@
   <strong>mem0 remembers. Myelin learns.</strong>
 </p>
 
-Agents should not relearn the same workflow twice. Myelin observes agent behavior, turns repeated work into reusable procedures, assembles actionable context, and transfers learned workflows across agents via MCP.
-
-Named after the biological myelin sheath that accelerates neural signal transmission, Myelin accelerates AI agents by helping them reuse what worked instead of rediscovering the same workflow every session.
-
-Myelin can learn from any AI system that emits structured observations: single agents, coding assistants, delegated teams, swarms, and orchestrated runtimes. It does not replace orchestration, planning, task management, or generic fact memory.
-
-> Orchestrators coordinate agents. Myelin learns from what agents repeatedly do.
-
-## Start Here
-
-- Run the proof demo: `python examples/procedure_learning_demo.py`
-- Read the launch plan: [docs/LAUNCH_PLAN.md](docs/LAUNCH_PLAN.md)
-- Use the launch copy: [docs/LAUNCH_KIT.md](docs/LAUNCH_KIT.md)
-- Use the brand assets: [docs/BRAND.md](docs/BRAND.md)
-- Use the launch video source: [assets/hyperframes/myelin-launch](assets/hyperframes/myelin-launch)
-- Read the changelog: [CHANGELOG.md](CHANGELOG.md)
-- Understand the lineage: [docs/LINEAGE.md](docs/LINEAGE.md)
-- Compare the category: [docs/COMPARISONS.md](docs/COMPARISONS.md)
-- Integrate agents: [docs/integrations/README.md](docs/integrations/README.md)
-- Wire Hermes: [docs/integrations/hermes.md](docs/integrations/hermes.md)
-- Emit observations: [docs/OBSERVATION_SCHEMA.md](docs/OBSERVATION_SCHEMA.md)
-- Benchmark locally: [docs/PERFORMANCE.md](docs/PERFORMANCE.md)
+Agents should not relearn the same workflow twice. Myelin learns from observations agents emit, turns repeated work into reusable procedures, and exposes them over stdio MCP — local-first, in SQLite, with core learning that runs without an LLM.
 
 ## Why Myelin
 
-Most agent memory systems store and retrieve text. Myelin does more:
+Most agent memory systems retrieve text. Myelin learns how work gets done. Repeated actions are clustered, aligned into a consensus sequence, and promoted into an executable procedure that can be reused after it earns trust from verified outcomes.
 
-- **Learns procedures automatically.** Watches what agents do, clusters similar action sequences, aligns them using ClustalW-inspired multiple sequence alignment, and promotes recurring patterns into reusable procedures with Bayesian confidence tracking.
-- **Builds knowledge graphs from observations.** Extracts entities (tools, services, files, errors) from every action, infers typed relationships, and maintains an evidence-weighted graph that grows with usage.
-- **Tracks temporal state.** Knows that Redis was healthy 2 hours ago but is degraded now. Maintains full state transition history for every entity.
-- **Assembles context, not just search results.** When an agent needs to act, Myelin combines relevant memories, matching procedures, entity relationships, temporal state, and domain confidence into a single structured context block.
-- **Transfers knowledge between agents.** Packages procedures with capability-aware adaptation so knowledge learned by one agent can be used by another, even with different toolsets.
+- **Procedures, not just recall.** Repeated action sequences become executable workflows with Bayesian confidence tracking.
+- **Verified trust.** Feedback bound to a `prediction_id` promotes a procedure from `candidate` to `validated`. Legacy feedback still updates confidence but cannot promote trust.
+- **Context, not search results.** A context block fuses memories, matching procedures, entities, temporal state, and domain confidence.
+- **Cross-agent transfer.** Learned procedures package intent and capability gaps so another agent can adapt and re-verify them.
+- **Local-first.** SQLite + FTS5 on disk, stdio MCP in, no remote service. Core learning needs no LLM; embeddings and LLM consolidation are optional.
 
-## Proof Demo
+Named after the myelin sheath that accelerates neural signal transmission, Myelin accelerates agents by helping them reuse what already works.
 
-Run the demo to watch Myelin observe five repeated deployment workflows, promote the shared sequence into a learned procedure, execute it, and update confidence from success feedback.
+## Install from source
+
+The package is not yet published to PyPI. Install from a checkout:
 
 ```bash
-uv run --python /Users/niamamor/.local/bin/python3.11 --with-editable ".[dev]" \
-  python examples/procedure_learning_demo.py
+git clone https://github.com/Niraven/myelin.git
+cd myelin
+pip install -e ".[dev]"
+```
+
+Runtime target: Python 3.11+.
+
+## Try it
+
+Run the proof demo. It observes five repeated deployment workflows, promotes the shared sequence into a procedure, executes it, and updates confidence from feedback:
+
+```bash
+python examples/procedure_learning_demo.py
 ```
 
 Expected shape:
@@ -64,121 +56,24 @@ Episodes observed: 25
 Procedures created: 1
 Learned procedure: auto_git_npm_docker
 Initial confidence: 75%
-Trust level: candidate
-Recommendation: suggest_only_review_before_execution
-Confidence after success feedback: 79%
-Trust after feedback: validated
+Verified feedback loop (3 × execute → bound feedback):
+  evidence_quality: verified
+  stored trust_state: trusted
+Confidence after verified feedback: 85%
+Same-domain context includes procedure: auto_git_npm_docker
 ```
 
-This is the core product claim: repeated behavior becomes an executable procedure without an LLM call.
-
-For orchestrated agent systems, run:
+For an orchestrated agent system, run the Hermes simulation:
 
 ```bash
-uv run --python /Users/niamamor/.local/bin/python3.11 --with-editable ".[dev]" \
-  python examples/hermes_procedure_demo.py
+python examples/hermes_procedure_demo.py
 ```
 
-This simulates Hermes coordinating research, build, and release agents across noisy CI-repair runs. Myelin learns the shared workflow while keeping Hermes responsible for routing and approvals.
+It simulates Hermes coordinating research, build, and release agents while Myelin learns the shared workflow. Hermes stays responsible for routing and approvals.
 
-## Architecture
+## Add Myelin as an MCP server
 
-```
-                    MCP Interface (21 tools)
-                           |
-            +--------------+--------------+
-            |              |              |
-     Intelligence    Memory Layer    Knowledge Layer
-     (context        (episodic,      (entities,
-      assembly)       semantic,       graph,
-                      procedural)     temporal)
-            |              |              |
-            +--------------+--------------+
-                           |
-                  Cognitive Processes
-           (consolidation, reflection,
-            promotion, composition,
-            decay, challenge, sleep)
-                           |
-                    SQLite + FTS5
-```
-
-**Memory Layer** stores three types of memory, mirroring human cognitive architecture:
-- **Episodic**: raw observations of what happened (what, when, outcome)
-- **Semantic**: distilled facts and reflections (consolidated from episodes)
-- **Procedural**: learned step-by-step workflows (promoted from clusters)
-
-**Knowledge Layer** maintains structured understanding:
-- **Entity Store**: pattern-based NER extracts tools, services, files, errors from every observation. No LLM dependency.
-- **Knowledge Graph**: typed, evidence-weighted edges between entities. BFS/DFS traversal, domain subgraphs.
-- **Temporal Index**: tracks entity state over time with automatic supersession and transition history.
-
-**Cognitive Processes** run in the background, triggered by write counts, timers, or session boundaries:
-- **Reconsolidator**: opens lability windows and updates memories when prediction error warrants it.
-- **Prediction Learner**: tracks predicted vs actual procedure outcomes and surprise.
-- **Consolidator/Reflector**: distills episodes into semantic facts and cross-domain insights.
-- **NREM/REM Sleep**: strengthens useful traces, downscales noise, replays priority episodes, and explores counterfactuals.
-- **Promoter/Composer**: promotes repeated action sequences into procedures and chains compatible procedures.
-- **Schema/Curiosity/FSRS/Self-Model**: induces behavioral schemas, detects learning gaps, schedules review, and tracks calibration.
-
-**Intelligence Layer** is the primary interface for agents:
-- **Context Assembler**: fuses all signals into a structured context block with suggested actions
-- **Multi-Signal Retriever**: ranks results using 5 fused signals (FTS + vector + entity + temporal + ACT-R activation)
-
-**Transfer Protocol** enables cross-agent knowledge sharing:
-- Agent profiling (tools, model family, context format)
-- Capability-aware step adaptation
-- Confidence discounting based on agent similarity
-
-## How Agents Use Myelin
-
-Myelin is a shared procedural learning layer underneath agent runtimes. It does not watch processes automatically, and it does not replace the agent or orchestrator. Agents explicitly call Myelin through MCP when they need context, when they finish useful actions, and when they want to reuse a learned workflow.
-
-Current transport: Myelin ships as a local stdio MCP server using `python -m myelin.server`. Remote HTTP or Streamable HTTP transport is useful for shared network services, but it is not part of the current server yet.
-
-The normal learning loop:
-
-```text
-agent plans task
-  -> myelin_context at task boundary
-  -> myelin_observe_batch during workflow
-  -> myelin_sleep at session end
-  -> myelin_execute_procedure on repeated task
-  -> myelin_procedure_feedback after execution
-```
-
-The cross-agent transfer loop:
-
-```text
-source agent learns procedure
-  -> myelin_transfer_discover checks fit
-  -> myelin_transfer_export packages intent and evidence
-  -> myelin_transfer_import creates target draft with confidence discount
-  -> target agent runs, reports feedback, and calibrates confidence
-```
-
-Start with a small tool allowlist: `myelin_context`, `myelin_observe`, `myelin_observe_batch`, `myelin_execute_procedure`, `myelin_procedure_feedback`, `myelin_status`, and `myelin_sleep`. Keep transfer, graph, teach, and profile tools gated until the integration is trusted.
-
-Integration guides:
-
-- [Universal MCP guide](docs/integrations/README.md)
-- [Hermes](docs/integrations/hermes.md)
-- [Codex](docs/integrations/codex.md)
-- [Claude Code](docs/integrations/claude-code.md)
-- [OpenClaw](docs/integrations/openclaw.md)
-- [Generic MCP clients](docs/integrations/generic-mcp.md)
-
-## Quick Start
-
-### Install
-
-```bash
-pip install myelin-memory
-```
-
-### As MCP Server
-
-Add to your MCP client config:
+Myelin is a stdio MCP server — `python -m myelin.server`. Point an MCP client at it:
 
 ```json
 {
@@ -192,187 +87,93 @@ Add to your MCP client config:
 }
 ```
 
-This is a stdio MCP server. Do not configure it as an HTTP URL unless you run it behind a separate bridge.
+It is stdio only today. Do not configure it as an HTTP URL unless you run it behind a separate MCP bridge.
 
-### Backfill (2 minutes to value)
+## The learning loop
 
-Myelin learns from observations. If you have existing session history, backfill it instantly:
-
-```bash
-# From a checkout
-python scripts/myelin-backfill.py --limit 100
-
-# Or from pip install — download the script first
-curl -sL https://raw.githubusercontent.com/Niraven/myelin/main/scripts/myelin-backfill.py | python3 - --limit 100
-```
-
-This reads your past sessions, extracts tool calls, and batch-observes them into Myelin.
-Then runs the sleep cycle to build the entity graph and the promoter to discover procedures.
-
-**Before backfill:** 115 episodes, 12 procedures, 3 relationships
-**After backfill:** 1,679 episodes, 20 procedures, 315 relationships
-
-Then Myelin learns your specific patterns from daily usage.
-
-### Verify Procedure Learning
-
-From a checkout:
-
-```bash
-pip install -e ".[dev]"
-python examples/procedure_learning_demo.py
-```
-
-The demo observes repeated deployment actions and returns a learned procedure:
+Agents and orchestrators call Myelin explicitly. It does not watch shells, browsers, or tool logs. Emit observations, ask for context, and run the loop:
 
 ```text
-Learned procedure: auto_git_npm_docker
-Steps:
-  1. git pull origin main
-  2. npm test
-  3. docker build myelin:latest
-  4. docker push registry/myelin:latest
-  5. kubectl rollout restart deployment/myelin
+agent plans task
+  -> myelin_context at task boundary
+  -> myelin_observe_batch during the workflow
+  -> myelin_sleep at session end or maintenance
+  -> myelin_execute_procedure on a repeated task
+  -> myelin_procedure_feedback after execution
 ```
 
-### Programmatic Usage
+`myelin_execute_procedure` returns a `prediction_id`. Pass it to `myelin_procedure_feedback` so the result is bound to that prediction: bound feedback is verified, idempotent, and atomic, and it can promote trust. Omit it and feedback still updates confidence, but it cannot promote trust.
 
-```python
-from myelin.core.database import Database
-from myelin.session import Session
+Start with a small allowlist — `myelin_context`, `myelin_observe`, `myelin_observe_batch`, `myelin_execute_procedure`, `myelin_procedure_feedback`, `myelin_status`, `myelin_sleep` — and gate transfer, graph, teach, and profile tools until the integration is trusted.
 
-db = Database("agent_memory.db")
-session = Session(db, agent_id="my-agent")
+## Key MCP tools
 
-# Record observations
-await session.observe(
-    action="git pull origin main",
-    action_type="tool_call",
-    content_text="Pulled latest changes from main branch",
-    domain="deployment",
-)
-
-# End session triggers cognitive processes
-results = await session.end()
-```
-
-### Key MCP Tools
+The server exports 25 tools. The ones you will reach for first:
 
 | Tool | Purpose |
 |------|---------|
-| `myelin_observe` | Record an action with automatic entity extraction |
-| `myelin_observe_batch` | Record many actions in one transaction for orchestrators |
-| `myelin_context` | Assemble complete context for a situation (primary tool) |
+| `myelin_observe` / `myelin_observe_batch` | Record one or many agent actions with entity extraction |
+| `myelin_context` | Assemble context for a situation (primary tool) |
 | `myelin_query` | Multi-signal retrieval across all memory types |
-| `myelin_execute_procedure` | Find matching learned procedure for a task |
-| `myelin_procedure_feedback` | Report success/failure to update confidence |
-| `myelin_graph_query` | Explore knowledge graph relationships |
-| `myelin_temporal` | Query temporal state of entities/domains |
-| `myelin_what_changed` | Show state transitions in a domain since a timestamp |
-| `myelin_entity_status` | Show current status and recent transitions for an entity |
-| `myelin_entities` | Search extracted entities |
-| `myelin_teach` | Manually teach a procedure |
-| `myelin_transfer_export` | Package procedure for another agent |
-| `myelin_transfer_import` | Import procedure from another agent |
-| `myelin_transfer_discover` | Find transferable procedures between agents |
-| `myelin_visualize` | Export the knowledge graph as Mermaid or D3 JSON |
-| `myelin_profile` | Summarize learned profile facts for an agent |
-| `myelin_confidence` | Query domain/procedure confidence |
-| `myelin_sleep` | Trigger sleep consolidation and procedure promotion |
-| `myelin_recall` | Basic search across memory types |
+| `myelin_execute_procedure` | Find the best matching learned procedure |
+| `myelin_procedure_feedback` | Report success/failure; bound via `prediction_id` |
+| `myelin_sleep` | Run sleep consolidation and procedure promotion |
 | `myelin_status` | System status overview |
+| `myelin_teach` | Manually teach a procedure |
+| `myelin_transfer_export` / `_import` / `_discover` | Package, load, and discover transferable procedures |
 
-## What Makes Myelin Different
+The full surface also covers facts, temporal state, graph queries, entity status, confidence, profile, update, forget, recall, and visualization.
 
-Most memory systems are built around recall: store facts, retrieve relevant text, and feed it back into context. Myelin is built around learning reusable agent behavior.
-
-| Capability | Myelin approach |
-|------------|-----------------|
-| Procedure learning | Clusters repeated action sequences and extracts consensus workflows |
-| Determinism | Core learning uses local algorithms instead of LLM-only extraction |
-| Context assembly | Combines memories, procedures, entities, temporal state, and confidence |
-| Confidence | Updates procedures with Bayesian feedback after execution |
-| Transfer | Adapts procedures across agents with different tool capabilities |
-| Deployment | Local-first SQLite with optional embeddings |
-
-Systems like mem0 and Supermemory are strong references for fact recall and retrieval. Myelin is aimed at the next layer: letting AI systems learn how work gets done.
-
-Hermes is the first flagship integration path, not the boundary of the product:
-
-> Hermes operates. Myelin learns the operating procedures.
-
-Myelin is also the focused successor to [Sigil](https://github.com/Niraven/sigil-memory), an earlier broad local-first agent memory prototype. See [docs/LINEAGE.md](docs/LINEAGE.md) for what Myelin absorbed and what it intentionally leaves out.
-
-## How Promotion Works
+## Architecture
 
 ```
-Agent actions --> Episodes --> Cluster detection --> ACT-R activation scoring
-  --> ClustalW sequence alignment --> Consensus extraction --> Procedure creation
-  --> Bayesian validation --> SOAR composition check --> Active procedure
+                    MCP Interface (25 tools)
+                           |
+            +--------------+--------------+
+            |              |              |
+     Intelligence    Memory Layer    Knowledge Layer
+     (context        (episodic,      (entities,
+      assembly)       semantic,       graph,
+                      procedural)     temporal)
+            |              |              |
+            +--------------+--------------+
+                           |
+                  Cognitive Processes
+           (consolidation, reflection,
+            promotion, composition,
+            decay, sleep)
+                           |
+                    SQLite + FTS5
 ```
 
-## Math
+- **Memory Layer:** episodic (raw observations), semantic (distilled facts), procedural (learned workflows).
+- **Knowledge Layer:** entity extraction, an evidence-weighted knowledge graph, and temporal state transitions — no LLM required for entity extraction.
+- **Intelligence Layer:** the context assembler fuses all signals; the multi-signal retriever ranks results.
+- **Cognitive Processes:** reconsolidation, reflection, promotion, composition, decay, and sleep-style consolidation. In the MCP server these run when the caller invokes `myelin_sleep` or maintenance; they are not an automatic background daemon.
+- **Transfer Protocol:** capability-aware procedure packaging with confidence discounting across agents.
 
-**ACT-R Activation**: `B(i) = ln(sum_j(t_j^(-d)))` where t_j is time since j-th access, d=0.5 decay
+## How promotion works
 
-**Bayesian Confidence**: On success: `c = c + (1-c) * 0.15`. On failure: `c = c * (1 - 0.15)`. Bounded [0.05, 0.99].
-
-**Ebbinghaus Decay**: `R = e^(-t/S)` where t is time in hours, S is stability
-
-**Multi-Signal Score**: `0.25*text + 0.25*vector + 0.20*entity + 0.15*temporal + 0.15*activation`
-
-**Temporal Score**: `confidence * 0.4 + recency * 0.3 + currency_boost * 0.3`
-
-## Research Foundation
-
-Myelin combines ideas from established cognitive architectures:
-- **ACT-R** (Carnegie Mellon, 40+ years) -- activation equations for memory retrieval and promotion scoring
-- **SOAR** (Michigan, 40+ years) -- chunking for procedure composition, impasse detection for learning goals
-- **Stanford Generative Agents** (Park et al., 2023) -- reflection for higher-order knowledge synthesis
-- **CoALA** (Princeton, 2023) -- modular memory architecture with structured action spaces
-- **ClustalW** (Thompson et al., 1994) -- progressive multiple sequence alignment adapted for action sequences
-
-## Project Structure
-
-```
-src/myelin/
-  core/           schema, models, database, activation math
-  memory/         episodic, semantic, procedural, clustering, alignment, retriever
-  knowledge/      entities, graph, temporal
-  intelligence/   context assembler
-  cognitive/      consolidator, reflector, promoter, composer, decayer, challenger, sleep
-  metacognition/  confidence maps, impasse detection
-  transfer/       agent profiling, transfer protocol
-  tools/          MCP tool handlers
-  server.py       MCP server entry point
-  session.py      session lifecycle
+```text
+Agent actions -> Episodes -> Cluster detection -> Sequence alignment
+  -> Consensus extraction -> Procedure creation -> Bayesian validation
+  -> Active procedure
 ```
 
-## Tech Stack
+Confidence updates are Bayesian: success raises it, failure lowers it, bounded to [0.05, 0.99].
 
-- Python 3.11+
-- SQLite + FTS5 (full-text search) + sqlite-vec (vector search)
-- MCP (Model Context Protocol) for agent integration
-- Pydantic for data models
-- Optional: nomic-embed-text-v1.5 for local embeddings
+## Integrations
 
-## Performance
+- [Agent integration guide](docs/integrations/README.md) — universal stdio MCP setup and trust bands
+- [Hermes](docs/integrations/hermes.md) — flagship orchestrator integration
+- [Codex](docs/integrations/codex.md)
+- [Claude Code](docs/integrations/claude-code.md)
+- [OpenClaw](docs/integrations/openclaw.md)
+- [Generic MCP clients](docs/integrations/generic-mcp.md)
 
-Myelin's public speed story is agent acceleration: agents spend less time rediscovering repeated workflows because they can reuse learned procedures.
+Backfill Hermes session history into Myelin (checkout-specific, Hermes only): `python scripts/myelin-backfill.py [--limit 1000] [--dry-run]`.
 
-### Benchmark Results (v0.3.0, 100-iteration fast trace)
-
-| Operation | p50 | p95 | avg |
-|-----------|-----|-----|-----|
-| Observe (store) | 9.4ms | 9.4ms | 9.4ms |
-| Recall (multi-signal) | 35.1ms | 49.7ms | 36.4ms |
-| Context assembly | 2.1ms | 2.6ms | 2.1ms |
-| Execute procedure | 0.13ms | 0.18ms | 0.14ms |
-| Promotion (one-time) | 6.3s | — | 6.3s |
-
-- **Procedure hit rate:** 100%
-- **Agent steps saved per procedure:** 3.0
-- **Tests:** 636 passing (0 failures)
+## Benchmark
 
 Run a local benchmark:
 
@@ -380,13 +181,15 @@ Run a local benchmark:
 python -m myelin.benchmark --counts 1000 --json
 ```
 
-See [docs/PERFORMANCE.md](docs/PERFORMANCE.md) for fast trace, semantic, and hybrid modes.
+The full run uses multiple counts: `python -m myelin.benchmark --counts 1000,10000,50000 --json`. See [docs/PERFORMANCE.md](docs/PERFORMANCE.md) for modes and how to read the results.
+
+## Research foundation
+
+Myelin adapts ideas from established cognitive architectures: ACT-R activation equations, SOAR chunking, Stanford Generative Agents reflection, CoALA memory structure, and ClustalW multiple sequence alignment.
 
 ## Development
 
 ```bash
-git clone https://github.com/Niraven/myelin.git
-cd myelin
 pip install -e ".[dev]"
 ruff format --check src/ tests/ examples/
 ruff check src/ tests/ examples/
@@ -401,6 +204,8 @@ python examples/hermes_procedure_demo.py
 - Contributing guide: [CONTRIBUTING.md](CONTRIBUTING.md)
 - Security policy: [SECURITY.md](SECURITY.md)
 - Brand guide: [docs/BRAND.md](docs/BRAND.md)
+- Launch copy: [docs/LAUNCH_KIT.md](docs/LAUNCH_KIT.md)
+- Changelog: [CHANGELOG.md](CHANGELOG.md)
 
 ## License
 

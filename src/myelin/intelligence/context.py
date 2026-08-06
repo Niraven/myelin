@@ -16,6 +16,7 @@ import json
 from typing import Any
 
 from ..core.database import Database
+from ..core.models import TrustState
 from ..knowledge.entities import EntityStore, extract_entities_from_text
 from ..knowledge.graph import KnowledgeGraph
 from ..knowledge.temporal import TemporalIndex
@@ -77,8 +78,22 @@ class ContextAssembler:
             querying_agent_id=agent_id,
         )
 
+        # Context shield: the retriever surfaces procedures too, so apply the
+        # same validated/trusted + exact-domain gate to procedure memories to
+        # keep them out of relevant_memories / assembled_text.
+        allowed_trust = {TrustState.VALIDATED.value, TrustState.TRUSTED.value}
+        memories = [
+            m
+            for m in memories
+            if m.get("_source_type") != "procedure"
+            or (
+                m.get("trust_state") in allowed_trust
+                and (domain is None or m.get("domain") == domain)
+            )
+        ]
+
         procedures = self._find_procedures(
-            query, query_embedding, max_procedures, agent_ids=agent_ids
+            query, query_embedding, max_procedures, domain=domain, agent_ids=agent_ids
         )
 
         query_entities = extract_entities_from_text(query)
@@ -128,9 +143,20 @@ class ContextAssembler:
         query: str,
         embedding: list[float] | None,
         limit: int,
+        domain: str | None = None,
         agent_ids: list[str] | None = None,
     ) -> list[dict[str, Any]]:
-        matches = self.procedural.find_matching(query, embedding, limit=limit, agent_ids=agent_ids)
+        # Default-context safety gate (issue #2): only validated/trusted
+        # procedures may enter assembled context. Candidate, seed, stale, and
+        # archived/superseded procedures are excluded at the SQL layer.
+        matches = self.procedural.find_matching(
+            query,
+            embedding,
+            limit=limit,
+            agent_ids=agent_ids,
+            domain=domain,
+            trust_states=[TrustState.VALIDATED.value, TrustState.TRUSTED.value],
+        )
         results = []
         for m in matches:
             steps = m.get("steps", "[]")
@@ -146,6 +172,7 @@ class ContextAssembler:
                     "name": m["name"],
                     "confidence": m.get("confidence", 0.5),
                     "status": m.get("status", "draft"),
+                    "trust_state": m.get("trust_state", TrustState.SEED.value),
                     "steps": steps,
                     "preconditions": _parse_json_field(m.get("preconditions", "[]")),
                     "postconditions": _parse_json_field(m.get("postconditions", "[]")),

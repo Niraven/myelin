@@ -1,147 +1,126 @@
 # Myelin Promotion Kit
 
-**Tagline:** Agents should not relearn workflows. Myelin learns.
+## Positioning
 
-**One-liner:** Myelin turns repeated agent behavior into reusable procedures via MCP. No LLM extraction — deterministic algorithms learn from what you already do.
+**Tagline:** Agents should not relearn workflows.
 
----
+**One-liner:** Myelin turns repeated agent behavior into reusable, confidence-tracked procedures over MCP.
 
-## The Problem
+**Category line:** Procedural learning for AI agents.
 
-Every time an agent deploys code, searches a job board, audits a system, or generates leads — it starts from zero. No memory of how it succeeded last time. No transfer between agents.
+> mem0 remembers. Myelin learns.
 
-**Skills fix this for hand-authored cases. Myelin fixes it for everything else.**
+## Short pitch
 
----
+Most agent memory systems help an agent recall text. Myelin helps an agent reuse how work gets done.
 
-## What Myelin Is
+Agents and orchestrators explicitly send observations to Myelin. Repeated action sequences are clustered, aligned into consensus workflows, and promoted into procedures. When an agent executes one, prediction-linked feedback updates confidence and earns trust from verified outcomes.
 
-A **procedural learning layer** that sits under any agent runtime (Hermes, Zo, Codex, Claude Code, any MCP-compatible agent):
+Myelin runs locally on SQLite and exposes 25 tools over stdio MCP. Core procedure learning works without an LLM; embeddings and LLM-backed consolidation are optional.
 
-- **Observes** agent actions automatically
-- **Clusters** repeated behavior into patterns
-- **Promotes** patterns into executable procedures with Bayesian confidence
-- **Assembles context** — fuses episodic memory + procedures + entity graph + temporal state + activation scoring
-- **Transfers** learned procedures between agents with capability-aware adaptation
+## What it is
 
----
+- A procedural learning layer under an agent runtime.
+- A local store for episodic, semantic, and procedural memory.
+- A trust-aware context assembler that shields unverified and cross-domain procedures.
+- A transfer layer for adapting learned procedures between agents.
 
-## What It Is NOT
+## What it is not
 
-- NOT a memory database (use mem0, Honcho, Supermemory for facts)
-- NOT an orchestrator (use Kanban, DAG, n8n for workflows)
-- NOT a RAG system (use vector DBs for document retrieval)
-- NOT a skill system — skills are hand-authored, Myelin procedures are auto-discovered
+- Not an orchestrator or scheduler.
+- Not an automatic shell, browser, or tool-log watcher.
+- Not a hosted memory service.
+- Not a replacement for fact memory, task management, or human approvals.
 
-**It's the bridge between "we did this once" and "we know how to do this."**
+## How it works
 
----
-
-## Key Capabilities
-
-| Capability | What it does |
-|------------|-------------|
-| Procedure learning | Watches actions, clusters sequences, aligns (ClustalW), promotes patterns |
-| Multi-signal retrieval | Fuses 5 signals: text + vector + entity + temporal + ACT-R activation |
-| Context assembly | One call = top memories + matching procedures + entity context + suggestions |
-| Knowledge graph | Entity extraction from actions, typed edges, BFS/DFS traversal |
-| Temporal tracking | Entity state over time with transition history |
-| Transfer protocol | Package procedures for cross-agent reuse with capability adaptation |
-| Cognitive sleep | Background NREM/REM consolidation, promotion, decay cycles |
-| Bayesian confidence | Asymptotic confidence updates with success/failure feedback |
-| FSRS scheduling | Spaced repetition for memory optimization |
-
----
-
-## Architecture (One Diagram)
-
-```
-Agent (MCP client)
-     │
-     ▼
-  Myelin MCP Server (21 tools)
-     │
-     ├── Intelligence Layer (context assembly, multi-signal retriever)
-     ├── Memory Layer (episodic, semantic, procedural)
-     ├── Knowledge Layer (entities, graph, temporal)
-     └── Cognitive Layer (consolidation, sleep, promotion, FSRS)
-               │
-               ▼
-         SQLite + FTS5 + sqlite-vec
-         (~/.hermes/data/myelin-hermes.db)
+```text
+agent emits observations
+  -> Myelin clusters repeated action sequences
+  -> explicit myelin_sleep promotes a consensus procedure
+  -> myelin_execute_procedure returns a procedure + prediction_id
+  -> agent executes with its normal approval gates
+  -> myelin_procedure_feedback binds the outcome to that prediction
+  -> verified evidence updates confidence and trust
 ```
 
-Zero external dependencies. Local-first. No cloud required.
+Context is deliberately stricter than diagnostic search: automatic context includes only validated or trusted procedures and enforces an exact domain match when a domain is supplied.
 
----
+## Try it from source
 
-## Integration (3 Minutes)
+Myelin is not yet published to PyPI.
 
 ```bash
-# 1. Install
-pip install myelin-memory
+git clone https://github.com/Niraven/myelin.git
+cd myelin
+python -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+python examples/procedure_learning_demo.py
+```
 
-# 2. Run MCP server
-python -m myelin.server --db ~/.hermes/data/myelin.db --embeddings local
+Hermes-style orchestrated demo:
 
-# 3. Add to agent config (MCP client)
-# In your agent's MCP config:
+```bash
+python examples/hermes_procedure_demo.py
+```
+
+## MCP setup
+
+Myelin currently uses stdio transport.
+
+```json
 {
-  "myelin": {
-    "command": "python",
-    "args": ["-m", "myelin.server", "--db", "~/.hermes/data/myelin.db", "--embeddings", "local"]
+  "mcpServers": {
+    "myelin": {
+      "command": "python",
+      "args": ["-m", "myelin.server", "--embedding-model", "none"]
+    }
   }
 }
 ```
 
-That's it. Start observing, and procedures emerge automatically.
+Start with `myelin_context`, `myelin_observe_batch`, `myelin_execute_procedure`, `myelin_procedure_feedback`, `myelin_sleep`, and `myelin_status`. Gate teaching, graph, profile, and transfer tools until the integration is trusted.
 
----
+## Proof points
 
-## Numbers from Production (Hermes + Myelin, May 2026)
+- 25 stdio MCP tools.
+- Local SQLite + FTS5 default storage.
+- Deterministic procedure discovery and confidence updates.
+- Prediction-linked, replay-idempotent feedback.
+- Trust- and domain-bounded automatic context.
+- Capability-aware cross-agent procedure transfer.
+- Optional embeddings and LLM-backed consolidation.
 
-| Metric | Value |
-|--------|-------|
-| Tests | 636/636 passing |
-| CI runs | 24 on main, all green |
-| MCP tools | 21 |
-| Procedures learned | 9 (growing) |
-| Entities extracted | 55 (tools, services, files, concepts) |
-| Latency (p50) | 2ms (context), 29ms (query), 55ms (p95 query) |
-| Procedure hit rate | 100% (benchmark) |
-| Confidence per feedback cycle | +4.5% (Bayesian) |
-| Storage | ~2MB for 18 episodes + 10 procedures + 55 entities |
+Run the repository demo and benchmark for current machine-specific proof rather than publishing stale performance or test counts:
 
----
+```bash
+python examples/procedure_learning_demo.py
+python -m myelin.benchmark --counts 100,1000 --json
+```
 
-## Use Cases We've Proven
+## Launch copy
 
-1. **Session context** — one call replaces 5 manual lookups
-2. **Procedure lifecycle** — teach → execute → feedback → confidence 0.70→0.745
-3. **Cross-agent transfer** — Hermes→Zo procedures packaged with adaptation
-4. **Pattern discovery** — repeated deployment sequences auto-promoted
-5. **Knowledge graph** — GitHub→Linear relationships detected from observations
+### Hacker News
 
----
+**Title:** Show HN: Myelin, procedural learning for AI agents
 
-## Comparison
+Myelin is a local-first procedural learning layer for AI agents. Instead of only retrieving facts, it learns reusable workflows from observations agents explicitly emit.
 
-| | Myelin | mem0 | Skills | Custom |
-|---|---|---|---|---|
-| Auto-learns from behavior | ✅ | ❌ | ❌ | ❌ |
-| Procedures with confidence | ✅ | ❌ | ❌ | ❌ |
-| Cross-agent transfer | ✅ | ❌ | Manual | ❌ |
-| Entity graph | ✅ | ❌ | ❌ | ❌ |
-| Temporal tracking | ✅ | ❌ | ❌ | ❌ |
-| Background consolidation | ✅ | ❌ | ❌ | ❌ |
-| No LLM cost per action | ✅ | ✅ | ✅ | Depends |
-| MCP-native | ✅ | ✅ | ❌ | Depends |
+The demo observes repeated deployment runs, extracts their shared action sequence, executes the resulting procedure, and uses prediction-linked feedback to earn trust. The core loop runs locally on SQLite/FTS5 and does not require an LLM.
 
----
+### LinkedIn / X
+
+Most agent memory stores facts. Myelin learns procedures.
+
+It turns repeated agent workflows into confidence-tracked procedures, then uses prediction-linked feedback to distinguish a successful run from an unverified claim.
+
+Local-first. SQLite-backed. stdio MCP. LLM optional.
+
+Demo: `python examples/procedure_learning_demo.py`
 
 ## Links
 
-- **GitHub:** https://github.com/Niraven/myelin
-- **Docs:** https://github.com/Niraven/myelin/blob/main/README.md
-- **License:** MIT
-- **Author:** Nino (@Niraven) — nino@niraven.dev
+- GitHub: https://github.com/Niraven/myelin
+- README: https://github.com/Niraven/myelin/blob/main/README.md
+- License: MIT

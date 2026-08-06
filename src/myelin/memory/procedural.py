@@ -50,14 +50,30 @@ class ProceduralMemory:
         limit: int = 5,
         min_confidence: float = 0.3,
         agent_ids: list[str] | None = None,
+        domain: str | None = None,
+        trust_states: list[str] | None = None,
     ) -> list[dict[str, Any]]:
-        """Find procedures matching a trigger pattern."""
-        where = None
-        where_params: tuple[Any, ...] = ()
+        """Find procedures matching a trigger pattern.
+
+        Optional ``domain`` and ``trust_states`` filters are only applied when
+        provided; direct/diagnostic callers that omit them keep the existing
+        unfiltered behaviour.
+        """
+        clauses: list[str] = []
+        params: list[Any] = []
         if agent_ids and agent_ids != ["*"]:
             placeholders = ",".join("?" for _ in agent_ids)
-            where = f"source_agent IN ({placeholders})"
-            where_params = tuple(agent_ids)
+            clauses.append(f"t.source_agent IN ({placeholders})")
+            params.extend(agent_ids)
+        if domain is not None:
+            clauses.append("t.domain = ?")
+            params.append(domain)
+        if trust_states:
+            placeholders = ",".join("?" for _ in trust_states)
+            clauses.append(f"t.trust_state IN ({placeholders})")
+            params.extend(trust_states)
+        where = " AND ".join(clauses) if clauses else None
+        where_params = tuple(params)
         results = self.db.hybrid_search(
             "procedures",
             "procedures_fts",
@@ -164,14 +180,21 @@ class ProceduralMemory:
         outcome: str,
         confidence_delta: float = 0.0,
         episode_id: str | None = None,
+        prediction_id: str | None = None,
     ) -> str:
-        """Record a procedure evidence event (execution, feedback, or approval)."""
+        """Record a procedure evidence event (execution, feedback, or approval).
+
+        ``prediction_id`` provides provenance linking the evidence back to a
+        prediction_log row; evidence carrying it counts as *verified* for trust
+        promotion.
+        """
         evidence = ProcedureEvidence(
             procedure_id=procedure_id,
             source=EvidenceSource(source),
             outcome=EvidenceOutcome(outcome),
             confidence_delta=confidence_delta,
             episode_id=episode_id,
+            prediction_id=prediction_id,
         )
         data = evidence.model_dump()
         data["source"] = (
@@ -193,10 +216,15 @@ class ProceduralMemory:
     def update_trust_state(self, procedure_id: str) -> str:
         """Recalculate trust state for a procedure based on evidence.
 
+        Trust promotion requires *verified* successful execution evidence —
+        procedure_evidence rows with a non-null ``prediction_id`` — rather than
+        the generic success_count alone, so unbound feedback cannot manufacture
+        trusted state.
+
         Rules:
         - stale:  no evidence in 30+ days
-        - validated: confidence >= 0.85 AND cross-agent transfer
-        - trusted:   confidence >= 0.7 AND >= 3 successful executions
+        - validated: confidence >= 0.85 AND cross-agent transfer AND verified evidence
+        - trusted:   confidence >= 0.7 AND >= 3 verified successful executions
         - candidate: confidence >= 0.3 OR manually taught
         - seed:      confidence < 0.3 (initial / auto-generated)
         """
@@ -219,15 +247,21 @@ class ProceduralMemory:
                 return TrustState.STALE.value
 
         confidence = proc["confidence"]
-        success_count = proc["success_count"]
         promotion_method = proc.get("promotion_method", "auto")
         transferred_to = proc.get("transferred_to", [])
 
-        # validated: cross-agent transfer + high confidence
-        if confidence >= 0.85 and len(transferred_to) > 0:
+        verified = self.db.fetchone(
+            "SELECT COUNT(*) AS c FROM procedure_evidence "
+            "WHERE procedure_id = ? AND outcome = 'success' AND prediction_id IS NOT NULL",
+            (procedure_id,),
+        )
+        verified_success_count = verified["c"] if verified else 0
+
+        # validated: cross-agent transfer + high confidence + verified evidence
+        if confidence >= 0.85 and len(transferred_to) > 0 and verified_success_count > 0:
             new_state = TrustState.VALIDATED
-        # trusted: high confidence with sufficient successful executions
-        elif confidence >= 0.7 and success_count >= 3:
+        # trusted: high confidence with verified successful executions
+        elif confidence >= 0.7 and verified_success_count >= 3:
             new_state = TrustState.TRUSTED
         # candidate: moderate confidence or manually taught
         elif confidence >= 0.3 or promotion_method == PromotionMethod.TAUGHT.value:

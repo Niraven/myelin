@@ -10,6 +10,7 @@ from myelin.core.models import (
     ProcedureStatus,
     ProcedureStep,
     StepType,
+    TrustState,
 )
 from myelin.intelligence.context import ContextAssembler
 from myelin.knowledge.entities import EntityStore
@@ -77,6 +78,7 @@ def populated(db, assembler):
         domain="deployment",
     )
     procedural.store(proc)
+    db.update("procedures", proc.id, {"trust_state": TrustState.TRUSTED.value})
 
     e1 = entities.upsert_entity("git pull", "tool", "git pull")
     e2 = entities.upsert_entity("npm test", "tool", "npm test")
@@ -159,3 +161,96 @@ class TestContextAssembler:
             include_confidence=False,
         )
         assert result["domain_confidence"] is None
+
+
+def _store_proc(
+    procedural, db, name, domain="deployment", trust_state=TrustState.TRUSTED.value, **kwargs
+):
+    """Store an ACTIVE procedure and set its trust_state explicitly."""
+    proc = Procedure(
+        name=name,
+        trigger_pattern=f"deploy {name}",
+        steps=[ProcedureStep(order=0, description=f"{name} step", step_type=StepType.CORE)],
+        preconditions=["pre"],
+        postconditions=["post"],
+        confidence=kwargs.pop("confidence", 0.8),
+        source_agent=kwargs.pop("source_agent", "agent1"),
+        status=kwargs.pop("status", ProcedureStatus.ACTIVE),
+        domain=domain,
+    )
+    procedural.store(proc)
+    db.update("procedures", proc.id, {"trust_state": trust_state})
+    return proc
+
+
+class TestContextTrustShield:
+    def test_context_excludes_candidate_seed_stale_procedures(self, db, assembler):
+        names = {
+            TrustState.TRUSTED.value: "trusted_deploy",
+            TrustState.VALIDATED.value: "validated_deploy",
+            TrustState.CANDIDATE.value: "candidate_deploy",
+            TrustState.SEED.value: "seed_deploy",
+            TrustState.STALE.value: "stale_deploy",
+        }
+        for state, name in names.items():
+            _store_proc(assembler.procedural, db, name, trust_state=state)
+
+        result = assembler.assemble("deploy the application")
+        proc_names = [p["name"] for p in result["matching_procedures"]]
+
+        assert set(proc_names) == {"trusted_deploy", "validated_deploy"}
+        for banned in ("candidate_deploy", "seed_deploy", "stale_deploy"):
+            assert banned not in proc_names
+            assert banned not in result["assembled_text"]
+        assert all(
+            "candidate_deploy" not in s and "seed_deploy" not in s and "stale_deploy" not in s
+            for s in result["suggested_actions"]
+        )
+
+    def test_context_filters_procedures_by_domain(self, db, assembler):
+        _store_proc(assembler.procedural, db, "deploy_prod", domain="deployment")
+        _store_proc(assembler.procedural, db, "deploy_staging", domain="staging")
+
+        result = assembler.assemble("deploy the application", domain="deployment")
+        proc_names = [p["name"] for p in result["matching_procedures"]]
+        assert "deploy_prod" in proc_names
+        assert "deploy_staging" not in proc_names
+        assert "deploy_staging" not in result["assembled_text"]
+
+    def test_context_domain_none_does_not_filter(self, db, assembler):
+        _store_proc(assembler.procedural, db, "deploy_prod", domain="deployment")
+        _store_proc(assembler.procedural, db, "deploy_staging", domain="staging")
+
+        result = assembler.assemble("deploy the application")
+        proc_names = [p["name"] for p in result["matching_procedures"]]
+        assert {"deploy_prod", "deploy_staging"} <= set(proc_names)
+
+    def test_context_includes_trust_state_per_procedure(self, db, assembler):
+        _store_proc(
+            assembler.procedural, db, "trusted_deploy", trust_state=TrustState.TRUSTED.value
+        )
+        _store_proc(
+            assembler.procedural, db, "validated_deploy", trust_state=TrustState.VALIDATED.value
+        )
+
+        result = assembler.assemble("deploy the application")
+        states = {p["name"]: p["trust_state"] for p in result["matching_procedures"]}
+        assert states["trusted_deploy"] == TrustState.TRUSTED.value
+        assert states["validated_deploy"] == TrustState.VALIDATED.value
+
+    def test_context_composes_agent_and_trust_filters(self, db, assembler):
+        _store_proc(assembler.procedural, db, "own_trusted", source_agent="agent1")
+        _store_proc(assembler.procedural, db, "other_trusted", source_agent="agent2")
+        _store_proc(
+            assembler.procedural,
+            db,
+            "own_candidate",
+            source_agent="agent1",
+            trust_state=TrustState.CANDIDATE.value,
+        )
+
+        result = assembler.assemble("deploy the application", agent_ids=["agent1"])
+        proc_names = [p["name"] for p in result["matching_procedures"]]
+        assert proc_names == ["own_trusted"]
+        assert "other_trusted" not in proc_names
+        assert "own_candidate" not in proc_names

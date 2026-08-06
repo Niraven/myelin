@@ -97,6 +97,42 @@ def test_find_matching_by_text(procedural):
     assert matches[0]["name"] == "deploy_app"
 
 
+def test_find_matching_returns_candidates_without_trust_filter(procedural, tmp_db):
+    from myelin.core.models import TrustState
+
+    proc = _make_procedure(name="deploy_candidate", status=ProcedureStatus.ACTIVE, confidence=0.5)
+    procedural.store(proc)
+    tmp_db.update("procedures", proc.id, {"trust_state": TrustState.CANDIDATE.value})
+
+    # Direct/diagnostic callers see candidates when no trust filter is requested.
+    matches = procedural.find_matching("deploy candidate")
+    assert any(m["name"] == "deploy_candidate" for m in matches)
+
+    # Explicit trust filter narrows the result set.
+    trusted = procedural.find_matching("deploy candidate", trust_states=[TrustState.TRUSTED.value])
+    assert all(m["trust_state"] != TrustState.CANDIDATE.value for m in trusted)
+
+
+def test_find_matching_filters_by_domain(procedural):
+    procedural.store(
+        _make_procedure(
+            name="deploy_prod", domain="deployment", status=ProcedureStatus.ACTIVE, confidence=0.8
+        )
+    )
+    procedural.store(
+        _make_procedure(
+            name="deploy_staging", domain="staging", status=ProcedureStatus.ACTIVE, confidence=0.8
+        )
+    )
+
+    matches = procedural.find_matching("deploy", domain="deployment")
+    assert len(matches) == 1
+    assert matches[0]["name"] == "deploy_prod"
+
+    unfiltered = procedural.find_matching("deploy")
+    assert {m["name"] for m in unfiltered} == {"deploy_prod", "deploy_staging"}
+
+
 def test_procedure_retrieval_goldens_accept_sql_words_as_search_data(procedural):
     goldens = [
         ("create_obsidian_project_note", "create canonical obsidian project note"),
@@ -217,8 +253,34 @@ def test_candidate_trust_state_from_taught(procedural):
     assert state == "candidate"
 
 
-def test_trusted_requires_confidence_and_executions(procedural):
-    """Trusted requires confidence >= 0.7 and 3+ successful executions."""
+def test_trusted_requires_confidence_and_verified_executions(procedural):
+    """Trusted requires confidence >= 0.7 and 3+ verified successful executions."""
+    proc = _make_procedure(
+        confidence=0.72,
+        status=ProcedureStatus.ACTIVE,
+        success_count=3,
+        failure_count=0,
+    )
+    procedural.store(proc)
+    for _ in range(3):
+        procedural.record_evidence(
+            procedure_id=proc.id,
+            source="feedback",
+            outcome="success",
+            prediction_id=f"pred-{_random()}",
+        )
+    state = procedural.update_trust_state(proc.id)
+    assert state == "trusted"
+
+
+def _random() -> str:
+    from uuid import uuid4
+
+    return uuid4().hex[:12]
+
+
+def test_trusted_not_without_verified_evidence(procedural):
+    """High success_count alone, without verified evidence, must not be trusted."""
     proc = _make_procedure(
         confidence=0.72,
         status=ProcedureStatus.ACTIVE,
@@ -227,24 +289,11 @@ def test_trusted_requires_confidence_and_executions(procedural):
     )
     procedural.store(proc)
     state = procedural.update_trust_state(proc.id)
-    assert state == "trusted"
-
-
-def test_trusted_not_without_enough_successes(procedural):
-    """High confidence alone without 3+ successes should not be trusted."""
-    proc = _make_procedure(
-        confidence=0.72,
-        status=ProcedureStatus.ACTIVE,
-        success_count=1,
-        failure_count=0,
-    )
-    procedural.store(proc)
-    state = procedural.update_trust_state(proc.id)
-    assert state == "candidate"  # high conf but < 3 successes
+    assert state == "candidate"  # high conf + success_count but no verified evidence
 
 
 def test_validated_requires_transfer(procedural):
-    """Validated requires confidence >= 0.85 and cross-agent transfer."""
+    """Validated requires confidence >= 0.85 and cross-agent transfer + verified evidence."""
     proc = _make_procedure(
         confidence=0.88,
         status=ProcedureStatus.ACTIVE,
@@ -252,6 +301,12 @@ def test_validated_requires_transfer(procedural):
         transferred_to=["agent-2"],
     )
     procedural.store(proc)
+    procedural.record_evidence(
+        procedure_id=proc.id,
+        source="feedback",
+        outcome="success",
+        prediction_id="pred-validated",
+    )
     state = procedural.update_trust_state(proc.id)
     assert state == "validated"
 

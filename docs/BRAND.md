@@ -48,7 +48,7 @@ Use `assets/brand/myelin-launch-slide.png` for talks, posts, and launch threads 
 
 - Lead with proof, not hype.
 - Say “procedural learning” and “agent acceleration” more than “memory.”
-- Be explicit about local-first and no LLM requirement for core operations.
+- Be explicit about local-first and that core learning runs without an LLM (LLM features are optional).
 - Avoid benchmark claims unless they are freshly verified.
 - Treat Hermes as the first flagship integration, not the whole market.
 

@@ -50,8 +50,10 @@ Learning loop:
 1. Call `myelin_context` at the start of important work.
 2. Emit actions with `myelin_observe_batch` during the workflow.
 3. Call `myelin_sleep` at session end or during maintenance.
-4. Call `myelin_execute_procedure` when a similar task appears.
-5. Call `myelin_procedure_feedback` after the agent uses a procedure.
+4. Call `myelin_execute_procedure` when a similar task appears. Keep the `prediction_id` it returns.
+5. Call `myelin_procedure_feedback` after the agent uses a procedure, passing that `prediction_id` back.
+
+Feedback bound to a `prediction_id` is verified, idempotent, and atomic, and it can promote a procedure toward trust. If you omit `prediction_id`, feedback still updates confidence but cannot promote trust.
 
 Transfer loop:
 
@@ -80,7 +82,7 @@ Start small. Expose the tools required for the base learning loop first.
 - Keep `content_text` concise and put large raw tool outputs elsewhere.
 - Call `myelin_sleep` at session end, after a workflow batch, or during scheduled maintenance.
 - Call `myelin_execute_procedure` only when the current task resembles a repeated workflow.
-- Call `myelin_procedure_feedback` every time an agent follows a procedure.
+- Call `myelin_procedure_feedback` every time an agent follows a procedure, and pass the `prediction_id` returned by `myelin_execute_procedure` so the feedback is bound and can promote trust.
 
 ## Trust Bands
 

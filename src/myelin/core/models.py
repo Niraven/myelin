@@ -249,6 +249,7 @@ class ProcedureEvidence(BaseModel):
     outcome: EvidenceOutcome
     confidence_delta: float = 0.0
     episode_id: str | None = None
+    prediction_id: str | None = None
     timestamp: str = Field(default_factory=_now_iso)
 
 

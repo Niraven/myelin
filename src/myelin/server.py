@@ -247,6 +247,10 @@ TOOLS = [
                 "success": {"type": "boolean"},
                 "modifications": {"type": "array", "items": {"type": "object"}},
                 "notes": {"type": "string"},
+                "prediction_id": {
+                    "type": "string",
+                    "description": "Optional prediction_id returned by myelin_execute_procedure to bind this feedback to a verified prediction and count toward trust promotion. If omitted, the feedback is legacy/unbound: it updates confidence but cannot promote trust.",
+                },
             },
             "required": ["procedure_id", "success"],
         },
