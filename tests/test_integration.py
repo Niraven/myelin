@@ -7,7 +7,7 @@ memory, query context, learn and transfer procedures, run cognitive processes.
 import pytest
 
 from myelin.core.database import Database
-from myelin.core.models import AgentProfile
+from myelin.core.models import AgentProfile, TrustState
 from myelin.memory.embedding import NoOpEmbedding
 from myelin.memory.episodic import EpisodicMemory
 from myelin.memory.procedural import ProceduralMemory
@@ -118,8 +118,8 @@ class TestContextAssembly:
         assert "matching_procedures" in result
         assert "assembled_text" in result
 
-    async def test_context_with_taught_procedure(self, handlers):
-        await handlers.teach(
+    async def test_context_with_taught_procedure(self, handlers, db):
+        teach_result = await handlers.teach(
             name="Build and Deploy",
             trigger_pattern="build and deploy docker image",
             steps=[
@@ -130,7 +130,18 @@ class TestContextAssembly:
             agent_id="agent1",
             domain="deployment",
         )
-        result = await handlers.context(query="build and deploy docker")
+        proc_id = teach_result["procedure_id"]
+
+        # Shield: a freshly taught procedure is only CANDIDATE, so it must not
+        # enter assembled context until its trust_state is promoted.
+        candidate_result = await handlers.context(
+            query="build and deploy docker", domain="deployment"
+        )
+        assert candidate_result["matching_procedures"] == []
+
+        # Promote to TRUSTED, then the exact-domain context must surface it.
+        db.update("procedures", proc_id, {"trust_state": TrustState.TRUSTED.value})
+        result = await handlers.context(query="build and deploy docker", domain="deployment")
         assert len(result["matching_procedures"]) >= 1
         assert result["matching_procedures"][0]["name"] == "Build and Deploy"
 
