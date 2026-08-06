@@ -13,7 +13,7 @@ Use this framing in docs, launch copy, and integration guidance.
 - Python package: `myelin-memory`
 - Runtime target: Python 3.11+
 - Current transport: stdio MCP via `python -m myelin.server`
-- Current tool count: 21 MCP tools
+- Current tool count: 25 MCP tools
 - Default mode: local SQLite + FTS5 with `--embedding-model none`
 - Optional mode: local/API embeddings for semantic recall
 - Core learning loop: observe -> cluster/align -> promote -> execute -> feedback
@@ -46,7 +46,7 @@ python -m myelin.benchmark --counts 100 --json
 The known-good local command style is:
 
 ```bash
-uv run --python /Users/niamamor/.local/bin/python3.11 --with-editable ".[dev]" <command>
+uv run --extra dev <command>
 ```
 
 ## Documentation Rules

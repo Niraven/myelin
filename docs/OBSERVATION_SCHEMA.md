@@ -107,7 +107,7 @@ Myelin needs repeated sessions before it can promote a procedure. The practical 
 1. Install Myelin quietly.
 2. Call `myelin_context` before important work.
 3. Emit observations during the run.
-4. Call `myelin_procedure_feedback` after execution.
+4. Call `myelin_procedure_feedback` after execution, passing the `prediction_id` returned by `myelin_execute_procedure` so the feedback is bound and can promote trust.
 5. Let Myelin promote only repeated, similar workflows.
 
 The first sessions should feel like passive telemetry. Value appears when the same workflow family repeats.

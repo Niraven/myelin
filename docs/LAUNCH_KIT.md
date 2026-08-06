@@ -17,8 +17,13 @@ Sigil was the broad research prototype. Myelin is the focused product: procedura
 ## Demo Command
 
 ```bash
-uv run --python /Users/niamamor/.local/bin/python3.11 --with-editable ".[dev]" \
-  python examples/procedure_learning_demo.py
+python examples/procedure_learning_demo.py
+```
+
+Requires a source checkout (`pip install -e ".[dev]"`). Hermes demo:
+
+```bash
+python examples/hermes_procedure_demo.py
 ```
 
 ## Hacker News Draft
@@ -50,7 +55,7 @@ Myelin learns procedures.
 
 It watches repeated agent workflows, aligns action sequences with a ClustalW-inspired algorithm, promotes consensus steps into executable procedures, and updates confidence from feedback.
 
-Local-first. SQLite. MCP-native. No LLM required for core learning.
+Local-first. SQLite. stdio MCP. Core learning runs without an LLM.
 
 Demo: python examples/procedure_learning_demo.py
 
@@ -71,7 +76,7 @@ Recommended topics:
 ai-agents, mcp, memory, procedural-memory, cognitive-architecture, sqlite, agent-framework, llm-tools
 ```
 
-Use `assets/brand/social-preview.png` for the repository social preview. It uses the Greek-tech myelin sheath direction and is sized at 1280x640. GitHub repository settings require uploading the image manually.
+Use `assets/brand/social-preview.png` for the repository social preview. It is the deterministic flat export of `social-preview.svg`, sized at 1280x640. GitHub repository settings require uploading the image manually.
 
 ## HyperFrames Video
 
@@ -105,7 +110,7 @@ Most memory tools retrieve facts. Myelin learns procedures.
 
 It watches repeated agent workflows, aligns action sequences, promotes the shared pattern into an executable procedure, and updates confidence with feedback.
 
-Local-first. SQLite-backed. MCP-native. No LLM required for core learning.
+Local-first. SQLite-backed. stdio MCP. Core learning runs without an LLM.
 ```
 
 Recommended structure:
