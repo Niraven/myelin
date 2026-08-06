@@ -201,11 +201,24 @@ class PredictionLearner:
         )
 
         # Step 4: Update procedure confidence with TD-modulated learning rate
+        proc = self.procedural.get(procedure_id)
+        old_confidence = proc["confidence"] if proc else 0.0
         self._update_procedure_confidence(
             procedure_id=procedure_id,
             td_error=td_error,
             actual_success=actual_success,
             predicted_confidence=predicted_confidence,
+        )
+
+        # Record one procedure_evidence row linked to this prediction (verified).
+        proc_after = self.procedural.get(procedure_id)
+        new_confidence = proc_after["confidence"] if proc_after else old_confidence
+        self.procedural.record_evidence(
+            procedure_id=procedure_id,
+            source="feedback",
+            outcome="success" if actual_success else "failure",
+            confidence_delta=new_confidence - old_confidence,
+            prediction_id=prediction_id,
         )
 
         # Step 5: Update episode priority if episode_id available
@@ -252,6 +265,7 @@ class PredictionLearner:
 
         success_count = proc["success_count"] + (1 if actual_success else 0)
         failure_count = proc["failure_count"] + (0 if actual_success else 1)
+        execution_count = proc["execution_count"] + 1
         total = success_count + failure_count
         actual_rate = success_count / total if total > 0 else None
 
@@ -262,6 +276,7 @@ class PredictionLearner:
                 "confidence": new_confidence,
                 "success_count": success_count,
                 "failure_count": failure_count,
+                "execution_count": execution_count,
                 "prediction_error": abs_td,
                 "surprise_score": abs(td_error) * (1.0 - predicted_confidence)
                 if td_error != 0

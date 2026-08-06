@@ -6,6 +6,7 @@ import json
 import time
 from typing import Any
 
+from ..cognitive.prediction_learner import PredictionLearner
 from ..core.activation import procedure_recommendation, procedure_trust_level
 from ..core.models import (
     ActionType,
@@ -53,6 +54,7 @@ class ToolHandlers:
         agent_profiler: AgentProfiler | None = None,
         synthesizer: Synthesizer | None = None,
         hybrid_extractor: HybridEntityExtractor | None = None,
+        prediction_learner: PredictionLearner | None = None,
     ):
         self.episodic = episodic
         self.semantic = semantic
@@ -82,6 +84,7 @@ class ToolHandlers:
             self.embedder,
         )
         self.hybrid_extractor = hybrid_extractor
+        self.prediction_learner = prediction_learner or PredictionLearner(self.db, self.procedural)
 
     # ── 1. myelin_observe ─────────────────────────────────────
 
@@ -361,6 +364,10 @@ class ToolHandlers:
             best.get("failure_count", 0),
         )
 
+        prediction = self.prediction_learner.predict_outcome(
+            best["id"], agent_id=agent_id, context=context
+        )
+
         return {
             "found": True,
             "procedure_id": best["id"],
@@ -371,6 +378,8 @@ class ToolHandlers:
             "calibration_offset": best.get("calibration_offset", 0.0),
             "steps": steps,
             "preconditions": best.get("preconditions", []),
+            "prediction_id": prediction.get("prediction_id"),
+            "predicted_success": prediction.get("predicted_success"),
             "alternatives": [
                 {"id": m["id"], "name": m["name"], "confidence": m["confidence"]}
                 for m in matches[1:]
@@ -385,7 +394,63 @@ class ToolHandlers:
         success: bool,
         modifications: list[dict] | None = None,
         notes: str | None = None,
+        prediction_id: str | None = None,
     ) -> dict[str, Any]:
+        # ── Bound feedback: routed through PredictionLearner ────────────
+        if prediction_id is not None:
+            pred = self.db.fetchone("SELECT * FROM prediction_log WHERE id = ?", (prediction_id,))
+            if not pred:
+                return {
+                    "error": f"Prediction {prediction_id} not found",
+                    "prediction_id": prediction_id,
+                    "evidence_quality": "unbound",
+                }
+            if pred["procedure_id"] != procedure_id:
+                return {
+                    "error": (
+                        f"Prediction {prediction_id} belongs to procedure "
+                        f"{pred['procedure_id']}, not {procedure_id}. No mutation applied."
+                    ),
+                    "prediction_id": prediction_id,
+                    "procedure_id": procedure_id,
+                }
+
+            outcome = self.prediction_learner.record_outcome(prediction_id, success)
+
+            if modifications:
+                self.procedural.record_modification(procedure_id, modifications)
+
+            trust_state = self.procedural.update_trust_state(procedure_id)
+            proc = self.procedural.get(procedure_id)
+            trust_level = (
+                procedure_trust_level(
+                    proc["confidence"],
+                    proc["success_count"],
+                    proc["failure_count"],
+                )
+                if proc
+                else "unknown"
+            )
+            return {
+                "procedure_id": procedure_id,
+                "prediction_id": prediction_id,
+                "evidence_quality": "verified",
+                "record_status": outcome.get("status", "recorded"),
+                "td_error": outcome.get("td_error"),
+                "surprise_score": outcome.get("surprise_score"),
+                "new_confidence": outcome.get("new_confidence"),
+                "trust_level": trust_level,
+                "trust_state": trust_state,
+                "recommendation": procedure_recommendation(trust_level)
+                if trust_level != "unknown"
+                else "procedure_not_found",
+                "success_count": proc["success_count"] if proc else 0,
+                "failure_count": proc["failure_count"] if proc else 0,
+                "execution_count": proc["execution_count"] if proc else 0,
+                "status": proc["status"] if proc else "unknown",
+            }
+
+        # ── Legacy feedback: no prediction handle, backward compatible ──
         new_confidence = self.procedural.record_execution(procedure_id, success)
 
         if modifications:
@@ -406,6 +471,7 @@ class ToolHandlers:
         )
         return {
             "procedure_id": procedure_id,
+            "evidence_quality": "unbound",
             "new_confidence": new_confidence,
             "trust_level": trust_level,
             "trust_state": trust_state,
@@ -414,6 +480,7 @@ class ToolHandlers:
             else "procedure_not_found",
             "success_count": proc["success_count"] if proc else 0,
             "failure_count": proc["failure_count"] if proc else 0,
+            "execution_count": proc["execution_count"] if proc else 0,
             "status": proc["status"] if proc else "unknown",
         }
 

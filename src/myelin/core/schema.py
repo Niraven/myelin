@@ -203,6 +203,7 @@ CREATE TABLE IF NOT EXISTS procedure_evidence (
     outcome TEXT NOT NULL,                -- 'success', 'failure', 'partial'
     confidence_delta REAL NOT NULL DEFAULT 0.0,
     episode_id TEXT,
+    prediction_id TEXT,                -- Provenance: links to prediction_log for verified feedback
     timestamp TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (procedure_id) REFERENCES procedures(id) ON DELETE CASCADE
 );
@@ -661,6 +662,9 @@ MIGRATION_COLUMNS = {
     "learning_goals": [
         ("gap_type", "TEXT"),
         ("target_id", "TEXT"),
+    ],
+    "procedure_evidence": [
+        ("prediction_id", "TEXT"),
     ],
 }
 
