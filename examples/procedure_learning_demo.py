@@ -24,6 +24,12 @@ WORKFLOW = [
     "kubectl rollout restart deployment/myelin",
 ]
 
+# Deterministic verified-feedback loop length. Each iteration executes the
+# procedure (emitting a fresh prediction id) and reports success back through
+# that prediction id, marking the evidence as *verified*. Three verified
+# successful executions are required to promote stored trust to "trusted".
+VERIFIED_FEEDBACK_CYCLES = 3
+
 
 async def run_demo(db_path: Path) -> dict[str, Any]:
     if db_path.exists():
@@ -58,15 +64,26 @@ async def run_demo(db_path: Path) -> dict[str, Any]:
             query="deployment workflow",
             agent_id="demo-agent",
         )
+        initial_confidence = execution["confidence"] if execution["found"] else 0.0
 
+        # Deterministic verified feedback loop: 3 × (execute → bound feedback).
+        # The first execution above supplies the first prediction; subsequent
+        # cycles execute again so every success is bound to a fresh prediction.
         feedback = None
-        if execution["found"]:
+        for cycle in range(VERIFIED_FEEDBACK_CYCLES):
+            if cycle:
+                execution = await handlers.execute_procedure(
+                    query="deployment workflow",
+                    agent_id="demo-agent",
+                )
             feedback = await handlers.procedure_feedback(
                 procedure_id=execution["procedure_id"],
                 success=True,
                 notes="Demo run completed successfully.",
+                prediction_id=execution["prediction_id"],
             )
 
+        assert feedback is not None
         context = await handlers.context(
             query="deployment workflow",
             domain="deployment",
@@ -78,8 +95,13 @@ async def run_demo(db_path: Path) -> dict[str, Any]:
         return {
             "episodes_observed": len(WORKFLOW) * 5,
             "procedures_created": promoter_result.get("created", 0),
+            "initial_confidence": initial_confidence,
+            "prediction_id": feedback["prediction_id"],
+            "evidence_quality": feedback["evidence_quality"],
+            "trust_state": feedback["trust_state"],
             "execution": execution,
             "feedback": feedback,
+            "matching_procedures": [p["name"] for p in context.get("matching_procedures", [])],
             "context": context["assembled_text"],
         }
     finally:
@@ -108,17 +130,20 @@ def main() -> None:
         return
 
     print(f"Learned procedure: {execution['name']}")
-    print(f"Initial confidence: {execution['confidence']:.0%}")
-    print(f"Trust level: {execution['trust_level']}")
-    print(f"Recommendation: {execution['recommendation']}")
+    print(f"Initial confidence: {result['initial_confidence']:.0%}")
+    print(f"Verified feedback loop ({VERIFIED_FEEDBACK_CYCLES} × execute → bound feedback):")
+    print(f"  evidence_quality: {result['evidence_quality']}")
+    print(f"  stored trust_state: {result['trust_state']}")
     print("Steps:")
     for index, step in enumerate(execution["steps"], start=1):
         print(f"  {index}. {step['description']}")
 
     feedback = result["feedback"]
     if feedback:
-        print(f"Confidence after success feedback: {feedback['new_confidence']:.0%}")
-        print(f"Trust after feedback: {feedback['trust_level']}")
+        print(f"Confidence after verified feedback: {feedback['new_confidence']:.0%}")
+
+    if result["matching_procedures"]:
+        print(f"\nSame-domain context includes procedure: {result['matching_procedures'][0]}")
 
     print("\nAssembled context:")
     print(result["context"])
