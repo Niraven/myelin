@@ -699,11 +699,42 @@ def _migrate_existing_columns(conn) -> None:
                 conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {definition}")
 
 
+# Maps an external-content FTS table to its backing content table.
+_FTS_CONTENT_TABLE = {
+    "episodes_fts": "episodes",
+    "semantic_fts": "semantic_nodes",
+    "procedures_fts": "procedures",
+    "entities_fts": "entities",
+}
+
+
 def _rebuild_fts(conn) -> None:
-    """Populate external-content FTS tables for rows created before triggers existed."""
+    """Populate external-content FTS tables for rows created before triggers existed.
+
+    The FTS sync triggers keep the index in lock-step with the content table for
+    every insert/update/delete, so a full rebuild is only required when the index
+    is missing rows (e.g. rows written before triggers existed, or after a schema
+    reset / manual base-table restore).
+
+    On external-content FTS5 tables neither ``count(*)`` nor ``integrity-check``
+    reliably reports index state (``count(*)`` reads the content table, and
+    ``integrity-check`` passes even on a wiped index). The ``<fts>_idx`` shadow
+    table *does* reflect the index: its row count drops to 0 when the index is
+    empty. We therefore rebuild only when the index is empty while its content
+    table has rows — a cheap (~0.5ms) check that skips the expensive full
+    re-index (~40-50ms at 19k episodes) on every connection open while still
+    self-healing the realistic "legacy rows never indexed" case.
+    """
     for table in FTS_TABLES:
-        if _table_exists(conn, table):
-            with suppress(Exception):
+        if not _table_exists(conn, table):
+            continue
+        with suppress(Exception):
+            base = _FTS_CONTENT_TABLE.get(table)
+            if base is None or not _table_exists(conn, base):
+                continue
+            index_empty = conn.execute(f"SELECT count(*) FROM {table}_idx").fetchone()[0] == 0
+            content_nonempty = conn.execute(f"SELECT 1 FROM {base} LIMIT 1").fetchone() is not None
+            if index_empty and content_nonempty:
                 conn.execute(f"INSERT INTO {table}({table}) VALUES('rebuild')")
 
 
