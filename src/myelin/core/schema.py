@@ -732,12 +732,8 @@ def _rebuild_fts(conn) -> None:
             base = _FTS_CONTENT_TABLE.get(table)
             if base is None or not _table_exists(conn, base):
                 continue
-            index_empty = (
-                conn.execute(f"SELECT count(*) FROM {table}_idx").fetchone()[0] == 0
-            )
-            content_nonempty = (
-                conn.execute(f"SELECT 1 FROM {base} LIMIT 1").fetchone() is not None
-            )
+            index_empty = conn.execute(f"SELECT count(*) FROM {table}_idx").fetchone()[0] == 0
+            content_nonempty = conn.execute(f"SELECT 1 FROM {base} LIMIT 1").fetchone() is not None
             if index_empty and content_nonempty:
                 conn.execute(f"INSERT INTO {table}({table}) VALUES('rebuild')")
 
