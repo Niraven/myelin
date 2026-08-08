@@ -168,6 +168,9 @@ class Database:
             )
             self._conn.row_factory = sqlite3.Row
             self._conn.execute("PRAGMA journal_mode=WAL")
+            # Larger page cache keeps the FTS5 index and base-table pages warm
+            # across queries; 16MiB is ample for a ~19k-episode corpus.
+            self._conn.execute("PRAGMA cache_size=-16384")
             self._conn.execute("PRAGMA foreign_keys=ON")
 
             if self._enable_vec:
