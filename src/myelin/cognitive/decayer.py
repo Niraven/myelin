@@ -43,7 +43,7 @@ class Decayer(CognitiveProcess):
         archived = 0
 
         procedures = self.db.fetchall(
-            "SELECT id, confidence, last_executed, success_count FROM procedures "
+            "SELECT id, confidence, last_executed, success_count, failure_count FROM procedures "
             "WHERE status IN (?, ?)",
             (ProcedureStatus.ACTIVE.value, ProcedureStatus.DRAFT.value),
         )
@@ -65,18 +65,25 @@ class Decayer(CognitiveProcess):
             if hours < GRACE_HOURS:
                 continue
 
-            has_feedback = (proc.get("success_count") or 0) + (proc.get("failure_count") or 0) > 0
-            stability = DECAY_STABILITY_BASE * max(1, proc.get("success_count", 0))
+            successes = proc.get("success_count") or 0
+            failures = proc.get("failure_count") or 0
+            # A procedure is only validated once it has accumulated enough
+            # evidence (>= 3 successes — the TRUSTED threshold). One recorded
+            # execution is NOT validation: it is a candidate awaiting feedback.
+            is_validated = successes >= 3
+            stability = DECAY_STABILITY_BASE * max(1, successes)
             new_confidence = ebbinghaus_decay(proc["confidence"], hours, stability)
 
-            # Executed but never feedbacked: decay salience but never archive —
-            # it's a candidate awaiting validation, not a dead procedure.
-            if not has_feedback:
+            # Unvalidated candidates: decay salience but never archive — they
+            # are awaiting validation, not dead procedures. Archiving them
+            # removed them from the read path entirely and re-created the
+            # empty-context deadlock (all 331 procedures were seed/candidate).
+            if not is_validated:
                 new_confidence = max(new_confidence, UNVALIDATED_FLOOR)
 
             if abs(new_confidence - proc["confidence"]) > 0.001:
                 updates: dict[str, Any] = {"confidence": new_confidence}
-                if new_confidence < ARCHIVE_THRESHOLD and has_feedback:
+                if new_confidence < ARCHIVE_THRESHOLD and is_validated:
                     updates["status"] = ProcedureStatus.ARCHIVED.value
                     archived += 1
                 self.db.update("procedures", proc["id"], updates)
