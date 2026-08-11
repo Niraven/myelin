@@ -146,16 +146,24 @@ class ContextAssembler:
         domain: str | None = None,
         agent_ids: list[str] | None = None,
     ) -> list[dict[str, Any]]:
-        # Default-context safety gate (issue #2): only validated/trusted
-        # procedures may enter assembled context. Candidate, seed, stale, and
-        # archived/superseded procedures are excluded at the SQL layer.
+        # Default-context safety gate (issue #2): shield assembled context
+        # from stale/archived procedures. Seed and candidate procedures are
+        # admitted WITH their trust band surfaced by procedure_trust_level()
+        # (candidate → review_before_use), so the read path is never empty
+        # while unvalidated procedures are still clearly labeled as such.
+        # Fully validated/trusted procedures are included too.
         matches = self.procedural.find_matching(
             query,
             embedding,
             limit=limit,
             agent_ids=agent_ids,
             domain=domain,
-            trust_states=[TrustState.VALIDATED.value, TrustState.TRUSTED.value],
+            trust_states=[
+                TrustState.SEED.value,
+                TrustState.CANDIDATE.value,
+                TrustState.VALIDATED.value,
+                TrustState.TRUSTED.value,
+            ],
         )
         results = []
         for m in matches:
