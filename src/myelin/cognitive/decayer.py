@@ -15,6 +15,8 @@ from .base import CognitiveProcess
 
 ARCHIVE_THRESHOLD = 0.1
 DECAY_STABILITY_BASE = 24.0
+GRACE_HOURS = 72.0  # recently executed → awaiting feedback; skip decay entirely
+UNVALIDATED_FLOOR = 0.2  # executed but never feedbacked → decay but never archive below this
 
 
 class Decayer(CognitiveProcess):
@@ -57,12 +59,24 @@ class Decayer(CognitiveProcess):
             except (ValueError, TypeError):
                 continue
 
+            # Grace period: recently executed procedures are awaiting feedback.
+            # Decaying them before feedback arrives cratered confidence —
+            # 0.6 → ~0.03 in 3 days at stability 24h, then archived at <0.1.
+            if hours < GRACE_HOURS:
+                continue
+
+            has_feedback = (proc.get("success_count") or 0) + (proc.get("failure_count") or 0) > 0
             stability = DECAY_STABILITY_BASE * max(1, proc.get("success_count", 0))
             new_confidence = ebbinghaus_decay(proc["confidence"], hours, stability)
 
+            # Executed but never feedbacked: decay salience but never archive —
+            # it's a candidate awaiting validation, not a dead procedure.
+            if not has_feedback:
+                new_confidence = max(new_confidence, UNVALIDATED_FLOOR)
+
             if abs(new_confidence - proc["confidence"]) > 0.001:
                 updates: dict[str, Any] = {"confidence": new_confidence}
-                if new_confidence < ARCHIVE_THRESHOLD:
+                if new_confidence < ARCHIVE_THRESHOLD and has_feedback:
                     updates["status"] = ProcedureStatus.ARCHIVED.value
                     archived += 1
                 self.db.update("procedures", proc["id"], updates)

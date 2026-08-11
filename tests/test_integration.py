@@ -132,18 +132,22 @@ class TestContextAssembly:
         )
         proc_id = teach_result["procedure_id"]
 
-        # Shield: a freshly taught procedure is only CANDIDATE, so it must not
-        # enter assembled context until its trust_state is promoted.
+        # Read path (post 510b93c): a freshly taught procedure starts at SEED
+        # and IS admitted to assembled context, but surfaced with its trust_state
+        # so consumers treat it as review-before-use rather than learned truth.
         candidate_result = await handlers.context(
             query="build and deploy docker", domain="deployment"
         )
-        assert candidate_result["matching_procedures"] == []
+        assert len(candidate_result["matching_procedures"]) >= 1
+        assert candidate_result["matching_procedures"][0]["name"] == "Build and Deploy"
+        assert candidate_result["matching_procedures"][0]["trust_state"] == TrustState.SEED.value
 
-        # Promote to TRUSTED, then the exact-domain context must surface it.
+        # Promote to TRUSTED, then the exact-domain context must surface it as trusted.
         db.update("procedures", proc_id, {"trust_state": TrustState.TRUSTED.value})
         result = await handlers.context(query="build and deploy docker", domain="deployment")
         assert len(result["matching_procedures"]) >= 1
         assert result["matching_procedures"][0]["name"] == "Build and Deploy"
+        assert result["matching_procedures"][0]["trust_state"] == TrustState.TRUSTED.value
 
 
 class TestProcedureLifecycle:
