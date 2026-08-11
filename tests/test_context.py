@@ -184,7 +184,11 @@ def _store_proc(
 
 
 class TestContextTrustShield:
-    def test_context_excludes_candidate_seed_stale_procedures(self, db, assembler):
+    def test_context_excludes_stale_but_surfaces_trust_band(self, db, assembler):
+        # Contract (post 510b93c): the read path must never be empty, so
+        # seed/candidate procedures ARE admitted — with their trust_state
+        # surfaced so consumers can treat unvalidated ones as review-before-use.
+        # Stale/archived procedures remain shielded at the SQL layer.
         names = {
             TrustState.TRUSTED.value: "trusted_deploy",
             TrustState.VALIDATED.value: "validated_deploy",
@@ -195,17 +199,29 @@ class TestContextTrustShield:
         for state, name in names.items():
             _store_proc(assembler.procedural, db, name, trust_state=state)
 
-        result = assembler.assemble("deploy the application")
+        result = assembler.assemble("deploy the application", max_procedures=10)
         proc_names = [p["name"] for p in result["matching_procedures"]]
 
-        assert set(proc_names) == {"trusted_deploy", "validated_deploy"}
-        for banned in ("candidate_deploy", "seed_deploy", "stale_deploy"):
-            assert banned not in proc_names
-            assert banned not in result["assembled_text"]
+        assert set(proc_names) == {
+            "trusted_deploy",
+            "validated_deploy",
+            "candidate_deploy",
+            "seed_deploy",
+        }
+        assert "stale_deploy" not in proc_names
+        assert "stale_deploy" not in result["assembled_text"]
         assert all(
-            "candidate_deploy" not in s and "seed_deploy" not in s and "stale_deploy" not in s
+            "stale_deploy" not in s
             for s in result["suggested_actions"]
         )
+
+        # Safety property: every admitted procedure carries its trust_state so
+        # the agent sees candidate/seed as unvalidated (review-before-use).
+        trust_by_name = {p["name"]: p["trust_state"] for p in result["matching_procedures"]}
+        assert trust_by_name["trusted_deploy"] == TrustState.TRUSTED.value
+        assert trust_by_name["validated_deploy"] == TrustState.VALIDATED.value
+        assert trust_by_name["candidate_deploy"] == TrustState.CANDIDATE.value
+        assert trust_by_name["seed_deploy"] == TrustState.SEED.value
 
     def test_context_filters_procedures_by_domain(self, db, assembler):
         _store_proc(assembler.procedural, db, "deploy_prod", domain="deployment")
@@ -251,6 +267,11 @@ class TestContextTrustShield:
 
         result = assembler.assemble("deploy the application", agent_ids=["agent1"])
         proc_names = [p["name"] for p in result["matching_procedures"]]
-        assert proc_names == ["own_trusted"]
+        # Same-agent candidate is admitted (unvalidated, review-before-use);
+        # other agents' procedures stay shielded; trust_state is always surfaced.
+        assert "own_trusted" in proc_names
+        assert "own_candidate" in proc_names
         assert "other_trusted" not in proc_names
-        assert "own_candidate" not in proc_names
+        trust_by_name = {p["name"]: p["trust_state"] for p in result["matching_procedures"]}
+        assert trust_by_name["own_trusted"] == TrustState.TRUSTED.value
+        assert trust_by_name["own_candidate"] == TrustState.CANDIDATE.value
