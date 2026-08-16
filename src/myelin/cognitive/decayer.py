@@ -66,7 +66,6 @@ class Decayer(CognitiveProcess):
                 continue
 
             successes = proc.get("success_count") or 0
-            failures = proc.get("failure_count") or 0
             # A procedure is only validated once it has accumulated enough
             # evidence (>= 3 successes — the TRUSTED threshold). One recorded
             # execution is NOT validation: it is a candidate awaiting feedback.
