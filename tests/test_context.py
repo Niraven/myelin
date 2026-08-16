@@ -210,10 +210,7 @@ class TestContextTrustShield:
         }
         assert "stale_deploy" not in proc_names
         assert "stale_deploy" not in result["assembled_text"]
-        assert all(
-            "stale_deploy" not in s
-            for s in result["suggested_actions"]
-        )
+        assert all("stale_deploy" not in s for s in result["suggested_actions"])
 
         # Safety property: every admitted procedure carries its trust_state so
         # the agent sees candidate/seed as unvalidated (review-before-use).
