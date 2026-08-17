@@ -307,7 +307,12 @@ class ToolHandlers:
             for e in entries:
                 # Never ship embedding vectors to agents: they are large binary
                 # blobs that dominate response size and carry no signal.
-                for blob_key in ("embedding", "embedding_vector", "query_embedding"):
+                for blob_key in (
+                    "embedding",
+                    "embedding_vector",
+                    "query_embedding",
+                    "trigger_embedding",
+                ):
                     if blob_key in e:
                         e[blob_key] = None
                 if "_provenance" not in e:

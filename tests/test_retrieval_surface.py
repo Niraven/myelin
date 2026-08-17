@@ -127,6 +127,7 @@ class TestRecallSynthesisAndTruncation:
                 assert e.get("embedding") is None
                 assert e.get("embedding_vector") is None
                 assert e.get("query_embedding") is None
+                assert e.get("trigger_embedding") is None
 
     async def test_recall_synthesize_runs_rule_based(self, db, handlers):
         await handlers.observe(
