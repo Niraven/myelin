@@ -363,16 +363,22 @@ class ToolHandlers:
         }
 
         if synthesize and flat:
-            synthesized = self.synthesizer.synthesize(query=query, results=flat)
-            response["synthesis"] = synthesized.get("synthesis")
-            response["synthesis_mode"] = synthesized.get("mode", "raw")
-            response["sources"] = synthesized.get("sources", [])
-            if synthesized.get("mode") == "synthesized":
-                response["message"] = "Answer synthesized from retrieved memories."
+            if self.synthesizer is None:
+                # No synthesis backend configured — return the bounded raw results.
+                response["synthesis"] = None
+                response["synthesis_mode"] = "raw"
+                response["message"] = "Synthesis not configured; returning bounded raw results."
             else:
-                response["message"] = (
-                    "Synthesis fell back to raw results (no LLM configured or no results)."
-                )
+                synthesized = self.synthesizer.synthesize(query=query, results=flat)
+                response["synthesis"] = synthesized.get("synthesis")
+                response["synthesis_mode"] = synthesized.get("mode", "raw")
+                response["sources"] = synthesized.get("sources", [])
+                if synthesized.get("mode") == "synthesized":
+                    response["message"] = "Answer synthesized from retrieved memories."
+                else:
+                    response["message"] = (
+                        "Synthesis fell back to raw results (no LLM configured or no results)."
+                    )
         elif synthesize and not flat:
             response["synthesis"] = None
             response["synthesis_mode"] = "empty"
@@ -1378,7 +1384,7 @@ class ToolHandlers:
         facts_list = distilled_list + legacy_list
         return {
             "agent_id": agent_id,
-            "facts": facts_list[:limit * 2],
+            "facts": facts_list[: limit * 2],
             "count": len(facts_list),
             "distilled_count": len(distilled_list),
             "legacy_count": len(legacy_list),
