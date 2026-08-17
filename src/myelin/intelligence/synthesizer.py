@@ -24,7 +24,14 @@ class SearchResult:
         if not isinstance(item, Mapping):
             raise TypeError("Search results must be Mapping or SearchResult instances.")
 
-        title = item.get("title") or item.get("name") or item.get("headline") or "Untitled result"
+        title = (
+            item.get("title")
+            or item.get("name")
+            or item.get("headline")
+            or item.get("node_type")
+            or item.get("action")
+            or "Untitled result"
+        )
         url = item.get("url") or item.get("link") or item.get("source_url") or ""
         snippet = (
             item.get("snippet")
