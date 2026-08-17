@@ -6,6 +6,7 @@ import json
 import time
 from typing import Any
 
+from ..cognitive.orchestrator import CognitiveOrchestrator
 from ..cognitive.prediction_learner import PredictionLearner
 from ..core.activation import procedure_recommendation, procedure_trust_level
 from ..core.models import (
@@ -55,6 +56,7 @@ class ToolHandlers:
         synthesizer: Synthesizer | None = None,
         hybrid_extractor: HybridEntityExtractor | None = None,
         prediction_learner: PredictionLearner | None = None,
+        orchestrator: CognitiveOrchestrator | None = None,
     ):
         self.episodic = episodic
         self.semantic = semantic
@@ -73,6 +75,7 @@ class ToolHandlers:
         self.profiler = agent_profiler or AgentProfiler(self.db)
         self.user_profiler = UserProfiler(self.db)
         self.transfer = transfer_protocol or TransferProtocol(self.db, self.procedural)
+        self.orchestrator = orchestrator
         self.assembler = context_assembler or ContextAssembler(
             self.db,
             self.retriever,
@@ -117,6 +120,21 @@ class ToolHandlers:
         )
 
         episode_id = self._record_episode(episode)
+
+        # Run the learning loop (reconsolidation / consolidation / NREM) on a
+        # write-count cadence. Mirrors the Session API path; without this, MCP
+        # observations are stored but never consolidated into semantic nodes.
+        if self.orchestrator is not None:
+            self.orchestrator.on_write()
+            try:
+                await self.orchestrator.check_triggers()
+            except Exception:
+                # Consolidation must never break observation recording.
+                import logging
+
+                logging.getLogger("myelin.handlers").exception(
+                    "orchestrator check_triggers failed after observe"
+                )
 
         return {
             "episode_id": episode_id,
@@ -180,6 +198,18 @@ class ToolHandlers:
             with self.db.transaction():
                 for episode in prepared:
                     episode_ids.append(self._record_episode(episode))
+            # Learning loop cadence for batch observations.
+            if self.orchestrator is not None:
+                for _ in prepared:
+                    self.orchestrator.on_write()
+                try:
+                    await self.orchestrator.check_triggers()
+                except Exception:
+                    import logging
+
+                    logging.getLogger("myelin.handlers").exception(
+                        "orchestrator check_triggers failed after observe_batch"
+                    )
 
         return {
             "recorded": len(episode_ids),
@@ -260,6 +290,8 @@ class ToolHandlers:
         memory_types: list[str] | None = None,
         domain: str | None = None,
         min_confidence: float = 0.0,
+        synthesize: bool = False,
+        max_content_chars: int = 800,
     ) -> dict[str, Any]:
         types = memory_types or ["episodic", "semantic", "procedural"]
         query_vec = self.embedder.embed(query) or None
@@ -288,20 +320,29 @@ class ToolHandlers:
                     ).to_dict()
             return entries
 
+        def _truncate(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+            """Trim long raw content so agents get signal, not dumps."""
+            for e in entries:
+                content = e.get("content_text") or e.get("content") or ""
+                if isinstance(content, str) and len(content) > max_content_chars:
+                    e["content_text"] = content[:max_content_chars] + "... [truncated]"
+                e["_full_content_length"] = len(content)
+            return entries
+
         results: dict[str, list] = {}
 
         if "episodic" in types:
             episodes = self.episodic.search_hybrid(query, query_vec, limit=limit)
             for ep in episodes:
                 self.episodic.access(ep["id"])
-            results["episodes"] = _attach_provenance(episodes, "episode")
+            results["episodes"] = _attach_provenance(_truncate(episodes), "episode")
 
         if "semantic" in types:
             nodes = self.semantic.search_hybrid(query, query_vec, limit=limit)
             for node in nodes:
                 self.semantic.access(node["id"])
             results["semantic"] = _attach_provenance(
-                [n for n in nodes if n.get("confidence", 0) >= min_confidence],
+                _truncate([n for n in nodes if n.get("confidence", 0) >= min_confidence]),
                 "semantic",
             )
 
@@ -309,13 +350,41 @@ class ToolHandlers:
             procedures = self.procedural.find_matching(
                 query, query_vec, limit=limit, min_confidence=min_confidence
             )
-            results["procedures"] = _attach_provenance(procedures, "procedure")
+            results["procedures"] = _attach_provenance(_truncate(procedures), "procedure")
 
-        return {
+        flat: list[dict[str, Any]] = []
+        for group in results.values():
+            flat.extend(group)
+
+        response: dict[str, Any] = {
             "query": query,
             "results": results,
             "total_results": sum(len(v) for v in results.values()),
         }
+
+        if synthesize and flat:
+            if self.synthesizer is None:
+                # No synthesis backend configured — return the bounded raw results.
+                response["synthesis"] = None
+                response["synthesis_mode"] = "raw"
+                response["message"] = "Synthesis not configured; returning bounded raw results."
+            else:
+                synthesized = self.synthesizer.synthesize(query=query, results=flat)
+                response["synthesis"] = synthesized.get("synthesis")
+                response["synthesis_mode"] = synthesized.get("mode", "raw")
+                response["sources"] = synthesized.get("sources", [])
+                if synthesized.get("mode") == "synthesized":
+                    response["message"] = "Answer synthesized from retrieved memories."
+                else:
+                    response["message"] = (
+                        "Synthesis fell back to raw results (no LLM configured or no results)."
+                    )
+        elif synthesize and not flat:
+            response["synthesis"] = None
+            response["synthesis_mode"] = "empty"
+            response["message"] = "No memories retrieved for query."
+
+        return response
 
     # ── 3. myelin_context ─────────────────────────────────────
 
@@ -1233,7 +1302,41 @@ class ToolHandlers:
         domain: str | None = None,
         limit: int = 20,
     ) -> dict[str, Any]:
-        """Query stored semantic facts for an agent."""
+        """Query stored semantic facts for an agent.
+
+        Primary source is the distilled knowledge in ``semantic_nodes``
+        (node_type='fact'), which is written by observation consolidation.
+        Falls back to the legacy agent-scoped ``semantic_facts`` key/value
+        table (written by ``myelin_memorize``) when the query is empty so
+        manually-memorized facts are still visible.
+        """
+        # 1) Distilled knowledge from consolidation (semantic_nodes).
+        distilled = self.semantic.get_facts(domain=domain) if domain else self.semantic.get_facts()
+        distilled_list = []
+        for row in distilled:
+            content = row.get("content", "")
+            # key_prefix is a legacy key filter; also accept prefix match on content
+            if key_prefix and not content.lower().startswith(key_prefix.lower()):
+                continue
+            distilled_list.append(
+                {
+                    "id": row.get("id"),
+                    "key": row.get("node_type", "fact"),
+                    "value": content,
+                    "domain": row.get("domain"),
+                    "confidence": row.get("confidence"),
+                    "source_type": row.get("source_type"),
+                    "access_count": row.get("access_count", 0),
+                    "created_at": row.get("created_at"),
+                    "expired": False,
+                    "expires_at": None,
+                    "origin": "semantic_nodes",
+                }
+            )
+            if len(distilled_list) >= limit:
+                break
+
+        # 2) Legacy manually-memorized facts (semantic_facts).
         conditions = ["agent_id = ?", "deleted_at IS NULL"]
         params: list[Any] = [agent_id]
 
@@ -1254,7 +1357,7 @@ class ToolHandlers:
 
         now = datetime.datetime.utcnow()
 
-        facts_list = []
+        legacy_list = []
         for row in rows:
             expired = False
             if row.get("expires_at"):
@@ -1263,7 +1366,7 @@ class ToolHandlers:
                     expired = expiry < now
                 except (ValueError, TypeError):
                     pass
-            facts_list.append(
+            legacy_list.append(
                 {
                     "id": row["id"],
                     "key": row["key"],
@@ -1273,10 +1376,19 @@ class ToolHandlers:
                     "expired": expired,
                     "expires_at": row.get("expires_at"),
                     "access_count": row.get("access_count", 0),
+                    "origin": "semantic_facts",
                 }
             )
 
-        return {"agent_id": agent_id, "facts": facts_list, "count": len(facts_list)}
+        # Merge: distilled first (higher value), legacy second.
+        facts_list = distilled_list + legacy_list
+        return {
+            "agent_id": agent_id,
+            "facts": facts_list[: limit * 2],
+            "count": len(facts_list),
+            "distilled_count": len(distilled_list),
+            "legacy_count": len(legacy_list),
+        }
 
     # ── Internal helpers ───────────────────────────────────────
 

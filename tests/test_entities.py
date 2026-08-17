@@ -108,6 +108,18 @@ class TestEntityStore:
         assert entity is not None
         assert entity["canonical_name"] == "git pull"
 
+    def test_upsert_normalizes_unknown_llm_type(self, store):
+        """LLM extraction can return free-form types not in EntityType; they must
+        be normalized to CONCEPT instead of crashing the write path."""
+        eid = store.upsert_entity("deployment pipeline", "workflow", "deployment pipeline")
+        assert eid is not None
+        entity = store.get_entity(eid)
+        assert entity is not None
+        assert entity["entity_type"] == "concept"
+        # A valid type still passes through unchanged.
+        eid2 = store.upsert_entity("postgres", "service", "postgres")
+        assert store.get_entity(eid2)["entity_type"] == "service"
+
     def test_upsert_increments_mention_count(self, store):
         eid1 = store.upsert_entity("git pull", "tool", "git pull")
         eid2 = store.upsert_entity("git pull", "tool", "git pull")

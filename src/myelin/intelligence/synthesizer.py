@@ -24,18 +24,30 @@ class SearchResult:
         if not isinstance(item, Mapping):
             raise TypeError("Search results must be Mapping or SearchResult instances.")
 
-        title = item.get("title") or item.get("name") or item.get("headline") or "Untitled result"
+        title = (
+            item.get("title")
+            or item.get("name")
+            or item.get("headline")
+            or item.get("node_type")
+            or item.get("action")
+            or "Untitled result"
+        )
         url = item.get("url") or item.get("link") or item.get("source_url") or ""
         snippet = (
             item.get("snippet")
             or item.get("excerpt")
             or item.get("description")
             or item.get("content")
+            or item.get("content_text")
             or ""
         )
         score = item.get("score")
         if score is None:
             score = item.get("rank")
+        if score is None:
+            score = item.get("composite_score")
+        if score is None:
+            score = item.get("_composite_score")
         try:
             score = None if score is None else float(score)
         except (TypeError, ValueError):
