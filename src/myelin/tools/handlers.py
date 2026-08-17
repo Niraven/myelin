@@ -1309,10 +1309,9 @@ class ToolHandlers:
         distilled_list = []
         for row in distilled:
             content = row.get("content", "")
+            # key_prefix is a legacy key filter; also accept prefix match on content
             if key_prefix and not content.lower().startswith(key_prefix.lower()):
-                # key_prefix is a legacy key filter; also accept prefix match on content
-                if not content.lower().startswith(key_prefix.lower()):
-                    continue
+                continue
             distilled_list.append(
                 {
                     "id": row.get("id"),

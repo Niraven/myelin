@@ -15,7 +15,7 @@ import json
 import math
 import time
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
@@ -52,7 +52,7 @@ def _hours_since(timestamp_str: str) -> float:
         return 0.0
     # Normalize aware timestamps to naive UTC so mixed writers can't crash the subtraction.
     if ep_ts.tzinfo is not None:
-        ep_ts = ep_ts.astimezone(timezone.utc).replace(tzinfo=None)
+        ep_ts = ep_ts.astimezone(UTC).replace(tzinfo=None)
     delta = datetime.utcnow() - ep_ts
     return max(0.0, delta.total_seconds() / 3600.0)
 
