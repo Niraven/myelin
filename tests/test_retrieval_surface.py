@@ -110,6 +110,24 @@ class TestRecallSynthesisAndTruncation:
         assert all(len(e.get("content_text", "")) <= 800 + 20 for e in episodes)
         assert all(e.get("_full_content_length", 0) == 5000 for e in episodes)
 
+    async def test_recall_strips_embedding_blobs(self, db, handlers):
+        """Embedding vectors must never ship to agents — they are large binary
+        blobs that dominate response size without adding signal."""
+        await handlers.observe(
+            agent_id="agent1",
+            session_id="s1",
+            action="deploy",
+            action_type="tool_call",
+            content_text="deployed the myelin release",
+            domain="dev",
+        )
+        result = await handlers.recall(query="deploy", limit=5)
+        for group in result["results"].values():
+            for e in group:
+                assert e.get("embedding") is None
+                assert e.get("embedding_vector") is None
+                assert e.get("query_embedding") is None
+
     async def test_recall_synthesize_runs_rule_based(self, db, handlers):
         await handlers.observe(
             agent_id="agent1",
