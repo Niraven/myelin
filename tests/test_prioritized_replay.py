@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 import math
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
@@ -132,6 +132,15 @@ def test_hours_since_old():
 def test_hours_since_invalid():
     assert _hours_since("") == 0.0
     assert _hours_since("garbage") == 0.0
+
+
+def test_hours_since_aware_timestamp():
+    """Aware timestamps (e.g. from the MCP observe path) must not crash the naive-UTC subtraction."""
+    aware = datetime.now(timezone.utc).isoformat()
+    h = _hours_since(aware)
+    assert 0.0 <= h < 0.01
+    old_aware = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+    assert 23.0 < _hours_since(old_aware) < 25.0
 
 
 # ── Priority Scoring ───────────────────────────────────────────────
