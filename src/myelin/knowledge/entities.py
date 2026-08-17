@@ -267,10 +267,17 @@ class EntityStore:
             return entity_id
 
         entity_id = _new_id()
+        # LLM-backed extraction can return free-form types (e.g. "workflow",
+        # "method", "database") that are not valid EntityType values. Normalize
+        # unknown types to CONCEPT so extraction can never crash the write path.
+        try:
+            normalized_type = EntityType(entity_type)
+        except ValueError:
+            normalized_type = EntityType.CONCEPT
         entity = Entity(
             id=entity_id,
             name=name,
-            entity_type=EntityType(entity_type),
+            entity_type=normalized_type,
             canonical_name=canonical_name,
             description=description,
             domain=domain,
