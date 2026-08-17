@@ -140,7 +140,7 @@ TOOLS = [
     ),
     Tool(
         name="myelin_recall",
-        description="Search across all memory types (episodic, semantic, procedural). Use myelin_context for richer results.",
+        description="Search across all memory types (episodic, semantic, procedural). Set synthesize=true for a distilled answer instead of raw memories.",
         inputSchema={
             "type": "object",
             "properties": {
@@ -152,6 +152,8 @@ TOOLS = [
                 },
                 "domain": {"type": "string"},
                 "min_confidence": {"type": "number", "default": 0.0},
+                "synthesize": {"type": "boolean", "default": False},
+                "max_content_chars": {"type": "integer", "default": 800},
             },
             "required": ["query"],
         },
@@ -579,6 +581,10 @@ def create_server(
     )
     transfer = TransferProtocol(db, procedural)
 
+    from .cognitive.orchestrator import CognitiveOrchestrator
+
+    orchestrator = CognitiveOrchestrator(db, episodic, semantic, procedural)
+
     handlers = ToolHandlers(
         episodic,
         semantic,
@@ -593,6 +599,7 @@ def create_server(
         confidence_map=confidence_map,
         synthesizer=synthesizer,
         hybrid_extractor=hybrid_extractor,
+        orchestrator=orchestrator,
     )
 
     @server.list_tools()

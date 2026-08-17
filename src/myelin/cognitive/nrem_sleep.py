@@ -111,17 +111,30 @@ class NREMPhase(CognitiveProcess):
 
     # ── Synaptic Downscaling ────────────────────────────────────
 
+    # Strong, well-evidenced relationships are protected from the blanket
+    # downscale; only weak/unreinforced edges decay fully each cycle.
+    PROTECTED_STRENGTH = 2.5
+    PROTECTED_SCALE = 0.95
+
     def _apply_synaptic_downscaling(self) -> int:
-        """Reduce ALL relationship strengths by SYNAPTIC_SCALE (0.85).
+        """Reduce relationship strengths by SYNAPTIC_SCALE (0.85).
 
         s_new = max(0.01, s_old * 0.85)
         This prevents unbounded growth. Hebbian strengthening will
         selectively restore strength only to co-occurring pairs.
+
+        Strong relationships (strength >= PROTECTED_STRENGTH) decay with the
+        gentler PROTECTED_SCALE (0.95) instead, so the graph does not
+        indiscriminately erase high-value edges when extraction is starved.
         """
         rows = self.db.fetchall("SELECT id, strength FROM relationships")
         updated = 0
         for row in rows:
-            new_strength = max(0.01, float(row["strength"]) * SYNAPTIC_SCALE)
+            strength = float(row["strength"])
+            if strength >= self.PROTECTED_STRENGTH:
+                new_strength = max(0.01, strength * self.PROTECTED_SCALE)
+            else:
+                new_strength = max(0.01, strength * SYNAPTIC_SCALE)
             # Use direct SQL for batch efficiency
             self.db.execute(
                 "UPDATE relationships SET strength = ? WHERE id = ?",

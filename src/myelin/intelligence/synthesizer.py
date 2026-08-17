@@ -31,11 +31,16 @@ class SearchResult:
             or item.get("excerpt")
             or item.get("description")
             or item.get("content")
+            or item.get("content_text")
             or ""
         )
         score = item.get("score")
         if score is None:
             score = item.get("rank")
+        if score is None:
+            score = item.get("composite_score")
+        if score is None:
+            score = item.get("_composite_score")
         try:
             score = None if score is None else float(score)
         except (TypeError, ValueError):

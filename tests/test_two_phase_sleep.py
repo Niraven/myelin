@@ -183,6 +183,26 @@ class TestNREMPhase:
         assert rel["strength"] < 2.0  # Strength must have decreased
 
     @pytest.mark.asyncio
+    async def test_synaptic_downscaling_protects_strong_relationships(self):
+        db = _make_db()
+        e1 = _add_entity(db, "git", "tool")
+        e2 = _add_entity(db, "docker", "tool")
+        # Strong, well-evidenced edge (>= PROTECTED_STRENGTH) must not be
+        # erased by the blanket 0.85 decay.
+        _add_relationship(db, e1, e2, "related_to", strength=4.0)
+
+        nrem = NREMPhase(db, EntityStore(db), KnowledgeGraph(db), TemporalIndex(db))
+
+        results = await nrem.execute()
+
+        assert results["synaptic_downscaled"] == 1
+        rel = db.fetchone("SELECT * FROM relationships")
+        assert rel is not None
+        expected = 4.0 * NREMPhase.PROTECTED_SCALE
+        assert abs(rel["strength"] - expected) < 0.01
+        assert rel["strength"] > 4.0 * 0.85  # Gentler decay for strong edges
+
+    @pytest.mark.asyncio
     async def test_hebbian_strengthening_co_occurring_pairs(self):
         db = _make_db()
         e1 = _add_entity(db, "git", "tool", domain="dev")
