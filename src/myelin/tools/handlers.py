@@ -305,6 +305,11 @@ class ToolHandlers:
             source_type: str,
         ) -> list[dict[str, Any]]:
             for e in entries:
+                # Never ship embedding vectors to agents: they are large binary
+                # blobs that dominate response size and carry no signal.
+                for blob_key in ("embedding", "embedding_vector", "query_embedding"):
+                    if blob_key in e:
+                        e[blob_key] = None
                 if "_provenance" not in e:
                     from ..core.models import RetrievalProvenance
 
