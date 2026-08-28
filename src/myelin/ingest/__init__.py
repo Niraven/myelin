@@ -19,6 +19,7 @@ Availability over consistency for ingest (CAP: AP path).
 from __future__ import annotations
 
 import json
+import sqlite3
 import threading
 import time
 import uuid
@@ -34,6 +35,14 @@ Sensitivity = Literal["public", "internal", "restricted"]
 DEFAULT_FLUSH_INTERVAL_S = 2.0
 DEFAULT_BATCH_SIZE = 50
 DEFAULT_MAX_QUEUE_SIZE = 10_000
+
+
+def _is_sqlite_lock_or_busy(exc: BaseException) -> bool:
+    """Return True for SQLite lock/busy contention, not other OperationalErrors."""
+    if not isinstance(exc, sqlite3.OperationalError):
+        return False
+    message = str(exc).lower()
+    return "locked" in message or "busy" in message
 
 
 class ObservationQueueError(Exception):
@@ -167,6 +176,7 @@ class ObservationQueue:
         self.max_queue_size = max_queue_size
 
         self._queue: Queue[Observation] = Queue(maxsize=max_queue_size)
+        self._pending_retry: list[Observation] = []
         self._permissions = AgentPermissions()
         self._lock = threading.Lock()
         self._flush_lock = threading.Lock()
@@ -213,6 +223,8 @@ class ObservationQueue:
     def _flush_batch(self) -> int:
         """Flush one batch while the caller holds ``_flush_lock``."""
         batch: list[Observation] = []
+        while self._pending_retry and len(batch) < self.batch_size:
+            batch.append(self._pending_retry.pop(0))
         while not self._queue.empty() and len(batch) < self.batch_size:
             try:
                 batch.append(self._queue.get_nowait())
@@ -220,18 +232,34 @@ class ObservationQueue:
                 break
 
         if not batch:
-            drained = self._drain_staged(self.batch_size)
+            try:
+                drained = self._drain_staged(self.batch_size)
+            except sqlite3.OperationalError as exc:
+                if not _is_sqlite_lock_or_busy(exc):
+                    raise
+                return 0
             with self._lock:
                 self._stats["flushed"] += drained
             return drained
 
         rows = [obs.to_row() for obs in batch]
         deduped = self._deduplicate(rows)
-        with self.db.transaction():
-            for row in deduped:
-                self.db.insert("observation_queue", row)
+        try:
+            with self.db.transaction():
+                for row in deduped:
+                    self.db.insert("observation_queue", row)
+        except sqlite3.OperationalError as exc:
+            if not _is_sqlite_lock_or_busy(exc):
+                raise
+            self._pending_retry.extend(batch)
+            return 0
 
-        self._drain_staged(len(deduped))
+        try:
+            self._drain_staged(len(deduped))
+        except sqlite3.OperationalError as exc:
+            if not _is_sqlite_lock_or_busy(exc):
+                raise
+            return 0
 
         flushed = len(batch)
         with self._lock:
@@ -239,7 +267,12 @@ class ObservationQueue:
         return flushed
 
     def flush_all(self) -> int:
-        """Flush all remaining observations. Returns count."""
+        """Flush remaining observations, including any lock-retry buffer.
+
+        A lock/busy flush returns 0 while work may still sit in ``_pending_retry``.
+        Stop on no progress so shutdown stays bounded; a later flush delivers
+        the preserved batch once the lock clears.
+        """
         total = 0
         while True:
             count = self.flush()
@@ -249,8 +282,8 @@ class ObservationQueue:
         return total
 
     def queue_size(self) -> int:
-        """Number of observations waiting to be flushed."""
-        return self._queue.qsize()
+        """Number of observations waiting to be flushed, including lock retries."""
+        return self._queue.qsize() + len(self._pending_retry)
 
     def stats(self) -> dict[str, int]:
         """Return cumulative queue statistics."""
@@ -273,7 +306,11 @@ class ObservationQueue:
             if stop_event and stop_event.is_set():
                 self.flush_all()
                 return
-            self.flush()
+            try:
+                self.flush()
+            except sqlite3.OperationalError as exc:
+                if not _is_sqlite_lock_or_busy(exc):
+                    raise
             time.sleep(self.flush_interval_s)
 
     # ── Internal ───────────────────────────────────────────
