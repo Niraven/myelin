@@ -206,10 +206,15 @@ class ObservationQueue:
             )
 
         try:
-            self._queue.put_nowait(observation)
-            self._stats["enqueued"] += 1
+            with self._lock:
+                occupied = self._queue.qsize() + len(self._pending_retry)
+                if occupied >= self.max_queue_size:
+                    raise Full
+                self._queue.put_nowait(observation)
+                self._stats["enqueued"] += 1
         except Full:
-            self._stats["dropped_backpressure"] += 1
+            with self._lock:
+                self._stats["dropped_backpressure"] += 1
             raise ObservationQueueError(
                 f"Observation queue full ({self.max_queue_size}). "
                 f"Agent '{observation.agent_id}' observation dropped."
@@ -223,8 +228,9 @@ class ObservationQueue:
     def _flush_batch(self) -> int:
         """Flush one batch while the caller holds ``_flush_lock``."""
         batch: list[Observation] = []
-        while self._pending_retry and len(batch) < self.batch_size:
-            batch.append(self._pending_retry.pop(0))
+        with self._lock:
+            while self._pending_retry and len(batch) < self.batch_size:
+                batch.append(self._pending_retry.pop(0))
         while not self._queue.empty() and len(batch) < self.batch_size:
             try:
                 batch.append(self._queue.get_nowait())
@@ -249,9 +255,10 @@ class ObservationQueue:
                 for row in deduped:
                     self.db.insert("observation_queue", row)
         except sqlite3.OperationalError as exc:
+            with self._lock:
+                self._pending_retry.extend(batch)
             if not _is_sqlite_lock_or_busy(exc):
                 raise
-            self._pending_retry.extend(batch)
             return 0
 
         try:
@@ -283,7 +290,8 @@ class ObservationQueue:
 
     def queue_size(self) -> int:
         """Number of observations waiting to be flushed, including lock retries."""
-        return self._queue.qsize() + len(self._pending_retry)
+        with self._lock:
+            return self._queue.qsize() + len(self._pending_retry)
 
     def stats(self) -> dict[str, int]:
         """Return cumulative queue statistics."""

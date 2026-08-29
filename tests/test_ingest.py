@@ -364,7 +364,8 @@ class TestIngestLockRetry:
         assert queue.queue_size() == 0
 
     def test_non_lock_operational_error_is_not_swallowed(self, db, queue, monkeypatch):
-        queue.enqueue(make_obs(idempotency_key="non-lock"))
+        obs = make_obs(idempotency_key="non-lock")
+        queue.enqueue(obs)
 
         @contextmanager
         def other_operational_error():
@@ -374,6 +375,134 @@ class TestIngestLockRetry:
         monkeypatch.setattr(db, "transaction", other_operational_error)
         with pytest.raises(sqlite3.OperationalError, match="no such table"):
             queue.flush()
+        assert queue.queue_size() == 1
+        assert queue._queue.empty()
+        assert [item.id for item in queue._pending_retry] == [obs.id]
+
+    def test_enqueue_rejects_when_pending_retry_fills_capacity(self, db, monkeypatch):
+        queue = ObservationQueue(db, batch_size=2, max_queue_size=2)
+        original = [make_obs(idempotency_key="pending-a"), make_obs(idempotency_key="pending-b")]
+        for obs in original:
+            queue.enqueue(obs)
+
+        @contextmanager
+        def locked_transaction():
+            raise sqlite3.OperationalError("database is locked")
+            yield
+
+        monkeypatch.setattr(db, "transaction", locked_transaction)
+        assert queue.flush() == 0
+        assert queue._queue.empty()
+        assert queue.queue_size() == 2
+
+        with pytest.raises(ObservationQueueError, match="Observation queue full"):
+            queue.enqueue(make_obs(idempotency_key="pending-c"))
+        assert queue.stats()["dropped_backpressure"] == 1
+        assert queue._queue.empty()
+        assert queue.queue_size() == 2
+
+        monkeypatch.undo()
+        assert queue.flush_all() == 2
+        assert queue.queue_size() == 0
+        assert sorted(_episode_ids(db)) == sorted(obs.id for obs in original)
+
+    def test_non_lock_operational_error_from_post_insert_drain_propagates(
+        self, db, queue, monkeypatch
+    ):
+        obs = make_obs(idempotency_key="drain-non-lock")
+        queue.enqueue(obs)
+
+        def boom(_limit: int) -> int:
+            raise sqlite3.OperationalError("no such table: episodes")
+
+        monkeypatch.setattr(queue, "_drain_staged", boom)
+        with pytest.raises(sqlite3.OperationalError, match="no such table: episodes"):
+            queue.flush()
+        row = db.fetchone("SELECT id FROM observation_queue WHERE id = ?", (obs.id,))
+        assert row is not None
+
+    def test_non_lock_operational_error_from_idle_drain_propagates(self, db, queue, monkeypatch):
+        def boom(_limit: int) -> int:
+            raise sqlite3.OperationalError("no such table: observation_queue")
+
+        monkeypatch.setattr(queue, "_drain_staged", boom)
+        with pytest.raises(sqlite3.OperationalError, match="no such table: observation_queue"):
+            queue.flush()
+        assert queue.queue_size() == 0
+
+    def test_run_poller_propagates_non_lock_operational_error(self, db, monkeypatch):
+        queue = ObservationQueue(db, flush_interval_s=0.01)
+        queue.enqueue(make_obs(idempotency_key="poller-non-lock"))
+
+        @contextmanager
+        def other_operational_error():
+            raise sqlite3.OperationalError("disk I/O error")
+            yield
+
+        monkeypatch.setattr(db, "transaction", other_operational_error)
+        stop = threading.Event()
+        errors: list[BaseException] = []
+
+        def run() -> None:
+            try:
+                queue.run_poller(stop)
+            except BaseException as exc:
+                errors.append(exc)
+
+        thread = threading.Thread(target=run)
+        thread.start()
+        thread.join(timeout=2.0)
+        assert thread.is_alive() is False
+        assert errors
+        assert isinstance(errors[0], sqlite3.OperationalError)
+        assert "disk I/O error" in str(errors[0])
+        assert queue.queue_size() == 1
+
+    def test_run_poller_stop_while_lock_remains_is_bounded_and_preserves_batch(
+        self, db, monkeypatch
+    ):
+        queue = ObservationQueue(db, flush_interval_s=0.01)
+        obs = make_obs(idempotency_key="stop-while-locked")
+        queue.enqueue(obs)
+
+        original_transaction = db.transaction
+        locked = {"on": True}
+
+        @contextmanager
+        def maybe_locked():
+            if locked["on"]:
+                raise sqlite3.OperationalError("database is locked")
+            with original_transaction():
+                yield
+
+        monkeypatch.setattr(db, "transaction", maybe_locked)
+        stop = threading.Event()
+        errors: list[BaseException] = []
+
+        def run() -> None:
+            try:
+                queue.run_poller(stop)
+            except BaseException as exc:
+                errors.append(exc)
+
+        thread = threading.Thread(target=run)
+        thread.start()
+        deadline = time.monotonic() + 0.5
+        while time.monotonic() < deadline and queue.queue_size() == 0:
+            time.sleep(0.01)
+        started = time.monotonic()
+        stop.set()
+        thread.join(timeout=1.0)
+        assert time.monotonic() - started < 1.0
+        assert thread.is_alive() is False
+        assert errors == []
+        assert queue.queue_size() == 1
+        assert _episode_ids(db) == []
+
+        locked["on"] = False
+        assert queue.flush_all() == 1
+        assert queue.queue_size() == 0
+        assert db.fetchall("SELECT id FROM episodes WHERE id = ?", (obs.id,)) == [{"id": obs.id}]
 
     def test_shutdown_flush_bounded_and_delivers_retry_when_lock_clears(self, db, monkeypatch):
         queue = ObservationQueue(db, flush_interval_s=0.01)
